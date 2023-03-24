@@ -46,6 +46,11 @@ class MimiqConnection:
         tokens = response.json()
         self.access_token = tokens["token"]
         self.refresh_token = tokens["refreshToken"]
+        if response.status_code == 200:
+            #print("Access token refreshed.")
+            self.start_refresher()
+        else:
+            print("Access token refresh failed.")
         
     def request(self, name,label,uploads):
         endpoint = "/api/request"
