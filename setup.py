@@ -1,11 +1,6 @@
-from setuptools import setup, find_packages
+#!/usr/bin/env python
 
-setup(
-    name='mimiqlib',
-    version='0.1.0',
-    packages=find_packages(),
-    install_requires=[
-        'requests',
-    ],
-)
+import setuptools
 
+if __name__ == "__main__":
+    setuptools.setup()
