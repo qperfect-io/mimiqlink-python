@@ -4,168 +4,242 @@ The class depends on the requests and mimetypes modules, which must be imported 
 import requests 
 import threading
 import os
-import http.server
+from http.server import HTTPServer
 import socketserver
 import urllib.parse
 import os.path
 import mimetypes
 import threading
 import webbrowser
-import time
+from time import sleep
+import re
+import logging
+from functools import partial
+
+from .handler import AuthenticationHandler
+
 
 class MimiqConnection:
-    def __init__(self, url,timeout=1):
+    def __init__(self, url='http://vps-f8c698f6.vps.ovh.net/', timeout=1):
         self.url = url
-        self.session = requests.Session()
-        self.session.headers.update({'Content-Type': 'application/json'})
         self.timeout=timeout
+
+        # refresher related variables
+        self.refresher_lock = threading.Lock()
         self.refresher_task = None
-        self.refresher_interval = 2
-    #Initializes a MimiqConnection object with a given URL and timeout value.
-     # url is the URL of the remote server, and timeout is the number of seconds 
-      #to wait for a response before timing out.
+        self.refresher_interval = 15 * 60
+
+        # tokens
+        self.access_token = None
+        self.refresh_token = None
+
+
     def authenticate(self, email, password):
+        "Authenticate to the remote server with the given credentials (email and password)."
         endpoint = "/api/sign-in"
+
+        # prepare the request
         data = {
             "email": email,
             "password": password
         }
+
+        # ask for access tokens
         response = requests.post(self.url + endpoint, json=data, timeout=self.timeout)
-        tokens = response.json()
-        self.access_token = tokens["token"]
-        self.refresh_token = tokens["refreshToken"]
+
         if response.status_code == 200:
-            print("Authentication successful.")
+            tokens = response.json()
+
+            # set the access tokens
+            with self.refresher_lock:
+                self.access_token = tokens["token"]
+                self.refresh_token = tokens["refreshToken"]
+
+            # refresher thread, running in the background
+            self.start_refresher()
+
+            logging.info("Authentication successful.")
+
+        else:
+            reason = response.json()["message"]
+            logging.error(f"Authentication failed with status code {response.status_code} and reason: {reason}")
+
+
+    def authenticate(self, token):
+        "Authenticate to the remote server with the given refresh token"
+
+        # set the refresh token
+        with self.refresher_lock:
+            self.refresh_token = token
+
+        # refresh
+        status = self.refresh()
+
+        if status:
+            logging.info("Authentication successfull.")
             self.start_refresher()
         else:
-            print("Authentication failed.")
+            logging.error("Authentication failed.")
 
-#Authenticates with the remote server using a given email and password. If successful
-# this method sets the access_token and refresh_token properties of the MimiqConnection object,
-# and starts a token refresher thread. If unsuccessful, an error message is printed.
+
     def start_refresher(self):
-
-        self.refresher_task = threading.Timer(self.refresher_interval, self.refresh)
+        "Start a refresher task"
+        self.refresher_task = threading.Thread(target=self.refresher)
         self.refresher_task.start()
-    #Starts a token refresher thread
-    def stop_refresher(self):
-        if self.refresher_task is not None:
-            self.refresher_task.cancel()
-            self.refresher_task = None
-    
-#Stops the token refresher thread.
+
+
+    def refresher(self):
+        "Refresher function. Will refresh the access token with the refresh token every configured interval."
+        while True:
+            sleep(self.refresher_interval)
+
+            status = self.refresh()
+
+            if not status:
+                logging.error("Access token refresh failed. Connection is closed")
+
+
     def refresh(self):
+        "Refresh the access token using the refresh token."
         endpoint = "/api/access-token"
-        data = {
-            "refreshToken": self.refresh_token
-        }
+
+        # prepare the request
+        with self.refresher_lock:
+            data = {
+                "refreshToken": self.refresh_token
+            }
+
+        # ask for a new access token
         response = requests.post(self.url + endpoint, json=data, timeout=self.timeout)
+
+        # check if the response is valid
+        if response.status_code != 200:
+            return false
+
         tokens = response.json()
-        self.access_token = tokens["token"]
-        self.refresh_token = tokens["refreshToken"]
-        if response.status_code == 200:
-            #print("Access token refreshed.")
-            self.start_refresher()
-        else:
-            print("Access token refresh failed.")
 
-#Refreshes the access token using the refresh token.
+        # write the new tokens
+        with self.refresher_lock:
+            self.access_token = tokens["token"]
+            self.refresh_token = tokens["refreshToken"]
+
+        return true
 
 
-    def request(self, name,label,uploads):
+    def request(self, name, label, uploads):
+        "Request an execution to the remote server"
+
         endpoint = "/api/request"
-        files = [("name", (None, name)), ("label", (None, label))]
+
+        data = [("name", (None, name)), ("label", (None, label))]
+
         for file in uploads:
-            with open(file, "rb") as f:
-                files.append(("uploads", (os.path.basename(file), f.read())))
+            if isinstance(file, io.IOBase) and not file.closed:
+                data.append(("uploads", (os.path.basename(file.name), f)))
+            else: 
+                data.append(("uploads", (os.path.basename(file), open(file, "rb"))))
                 
-        headers = {
-            "Authorization": f"Bearer {self.access_token}",
-        }
-        response = requests.post(self.url +endpoint, files=files, headers=headers)
+        response = requests.post(self.url + endpoint, files=data, headers=self.authorization_headers())
         
-        if response.status_code == 200:
-            print("Files uploaded successfully.")
-        else:
-            print(response)
+        if response.status_code != 200:
+            logging.error(f"File upload failed with status code {response.status_code}")
+            return None
 
-#Uploads files to the remote server. name is the name of the execution request, label is a label for the request, 
-#and uploads is a list of file paths to upload. If successful, 
-#a success message is printed. If unsuccessful, an error message is printed.
+        return response.json()["executionRequestId"]
 
-    def fileserver(req):
-        requested_file = "/index.html" if req.path == "/" else req.path
-        requested_file = urllib.parse.unquote(requested_file)
 
-    
-        if not requested_file:
-            return http.server.HTTPStatus.FORBIDDEN
-
-        file_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "public", requested_file[1:]))
-
-        mime_type, _ = mimetypes.guess_type(file_path)
-        if not mime_type:
-            mime_type = ""
-
-        if os.path.isfile(file_path):
-            with open(file_path, "rb") as f:
-                file_content = f.read()
-                return http.server.BaseHTTPRequestHandler.build_response(
-                    status=200, headers={"Content-Type": mime_type}, data=file_content
-                )
-
-        return http.server.HTTPStatus.NOT_FOUND
-#A static method which serves files from a local directory. Used for testing.
-
-    def connect(self):
-        executionRequestId = "640f112300514323466c0e35"
-        endpoint = f"/api/request/{executionRequestId}"
-
+    def requestinfo(self, request):
+        endpoint = f"/api/request/{request}"
         
-        headers = {
-            "Authorization": f"Bearer {self.access_token}",
-            "Content-Type": "application/json"
-        }
+        headers = self.authorization_headers(extra_headers={"Content-Type": "application/json"})
+
         response = requests.get(self.url + endpoint, headers=headers)
-        if response.status_code == 200:
-            execution_data = response.json()
-            print(f"Execution details retrieved for ID {executionRequestId}: {execution_data}")
-        else:
-            print(f"Failed to retrieve execution details for ID {executionRequestId}: {response}")
 
- #Retrieves execution details for a given execution request ID. If successful, 
- # a success message is printed along with the execution details. 
- # If unsuccessful, an error message is printed.
+        if response.status_code != 200:
+            print(f"Failed to retrieve execution details for {request}. Server responded with {response.status_cde}")
+            return None
 
-    def download_file(self, executionRequestId, index, uploads):
-        headers = {
-            "Authorization": f"Bearer {self.access_token}"
-        }
-
-        endpoint = f"/api/files/{executionRequestId}/{index}?source={uploads}"
-
-        # add a delay before the first download attempt
-        time.sleep(5)
-        max_retries = 5
-        for retry in range(max_retries):
-            response = requests.get(self.url + endpoint, headers=headers)
-
-            if response.status_code == 200:
-                print(response.headers)
-                file_name="1.txt"
-                with open("1.txt", "wb") as f:
-                    f.write(response.content)
-                print(f"Downloaded {file_name} successfully.")
-                break
-            elif response.status_code == 202:
-                print(f"Server is still processing the request. Retrying in {response}")
-                time.sleep(10*(retry+1))
-            else:
-                print(f"Failed to download {self.url +endpoint}. Status code: {response.status_code}")
-                break
+        return response.json()
 
 
-#Downloads a file from the remote server. executionRequestId is the ID of the execution request to download from,
-#  index is the index of the file to download, and uploads is the upload path for the file. If successful, 
-# the file is downloaded and a success message is printed. If unsuccessful, an error message is printed. The method includes a retry mechanism 
-# which retries the download several times if the server is still processing the request.
+    def authorization_headers(self, extra_headers = {}):
+        # fetch the access token
+        with self.refresher_lock:
+            token = self.access_token
+
+        # build the headers
+        headers = { "Authorization": f"Bearer {token}" }
+        headers.update(extra_headers)
+
+        return headers
+
+
+    def download_file(self, request, index, type, destdir=f"./{request}"):
+        endpoint = f"/api/files/{request}/{index}?source={type}"
+
+        response = requests.get(self.url + endpoint, headers=headers)
+
+        if response.status_code != 200:
+            logging.error(f"Failed to retrieve {type} files for {request}. Server responded with {response.status_code}")
+            return None
+
+        filename = re.findall('filename="(.+)"', response.headers.get('Content-Disposition'))
+
+        # Should never happen, but just in case.
+        # If it does, we can't do anything about it here. We need to patch the server
+        if not filename:
+            logging.error(f"Something went wrong. Server is missing the filename")
+            return None
+
+        # at this point we should have a valid filename and a valid directory
+        # so we write everything to the file
+        with open(os.path.join(destdir, filename), 'wb') as f:
+            f.write(response.content)
+
+        return name
+
+
+    def downloadjobfiles(self, request, **kwargs):
+        infos = self.requestinfo(request)
+        nf = infos.get("numberOfUploadedFiles", 0)
+
+        # if the directory alreayd exists send a warning, otherwise create it
+        try:
+            os.mkdir(destdir)
+        except FileExistsError:
+            logging.warning(f"Directory {destdir} already exists.")
+
+        names = []
+        for idx in range(nf):
+            name = self.download_file(request, idx, "uploads", **kwargs)
+            names.append(name)
+
+        return names
+
+
+    def downloadresults(self, request, **kwargs):
+        infos = self.requestinfo(request)
+        nf = infos.get("numberOfResultedFiles", 0)
+
+        # if the directory alreayd exists send a warning, otherwise create it
+        try:
+            os.mkdir(destdir)
+        except FileExistsError:
+            logging.warning(f"Directory {destdir} already exists.")
+
+        names = []
+        for idx in range(nf):
+            name = self.download_file(request, idx, "results", **kwargs)
+            names.append(name)
+
+        return names
+
+
+    def authenticate(self):
+        handler = partial(AuthenticationHandler, lambda email, password: self.authenticate(email, password))
+        with HTTPServer(('', 0), handler) as httpd:
+            port = httpd.server_port
+            print(f"Starting authentication server on port {port} (http://localhost:{port})")
+            logging.info(f"Starting authentication server on port {port} (http://localhost:{port})")
+            while self.access_token is None:
+                httpd.handle_request()
