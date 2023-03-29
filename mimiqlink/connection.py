@@ -25,6 +25,9 @@ class TimeoutHTTPAdapter(HTTPAdapter):
         timeout = kwargs.get("timeout")
         if timeout is None and hasattr(self, 'timeout'):
             kwargs["timeout"] = self.timeout
+        # HACK: fix here. used to put timeout=0 (and hence timeout=None) in upload (otherwise we have a timeout)
+        if timeout == 0:
+            kwargs["timeout"] = None
         return super().send(request, **kwargs)
 
 
@@ -43,8 +46,8 @@ class MimiqConnection:
 
         # session for doing requests
         self.session = requests.Session()
-        self.session.mount('http://', TimeoutHTTPAdapter(timeout=(1,10)))
-        self.session.mount('https://', TimeoutHTTPAdapter(timeout=(1,10)))
+        self.session.mount('http://', TimeoutHTTPAdapter(timeout=(1,None)))
+        self.session.mount('https://', TimeoutHTTPAdapter(timeout=(1,None)))
 
 
     def connectUser(self, email, password):
@@ -189,7 +192,7 @@ class MimiqConnection:
             else: 
                 data.append(("uploads", (os.path.basename(file), open(file, "rb"))))
                 
-        response = self.session.post(self.url + endpoint, files=data)
+        response = self.session.post(self.url + endpoint, files=data, timeout=0)
         
         if response.status_code != 200:
             logging.error(f"File upload failed with status code {response.status_code}")
@@ -231,12 +234,9 @@ class MimiqConnection:
         return True
 
 
-    def downloadFile(self, request, index, type, destdir=None):
+    def downloadFile(self, request, index, type, destdir):
         if not self.checkAuth():
             return None
-
-        if destdir is None:
-            destdir = os.path.join("./", request)
 
         endpoint = f"/api/files/{request}/{index}?source={type}"
 
@@ -248,12 +248,6 @@ class MimiqConnection:
 
         filename = re.findall('filename="(.+)"', response.headers.get('Content-Disposition'))[0]
         print(f"Saving {filename} in {destdir}")
-
-        # if the directory alreayd exists send a warning, otherwise create it
-        try:
-            os.mkdir(destdir)
-        except FileExistsError:
-            logging.warning(f"Directory {destdir} already exists.")
 
         # Should never happen, but just in case.
         # If it does, we can't do anything about it here. We need to patch the server
@@ -269,34 +263,42 @@ class MimiqConnection:
         return filename
 
 
-    def downloadJobFiles(self, request, **kwargs):
+    def downloadFiles(self, request, source, destdir=None):
         if not self.checkAuth():
             return None
 
+        if destdir is None:
+            destdir = os.path.join("./", request)
+
+        # if the directory alreayd exists send a warning, otherwise create it
+        try:
+            os.mkdir(destdir)
+        except FileExistsError:
+            logging.warning(f"Directory {destdir} already exists.")
+
         infos = self.requestInfo(request)
-        nf = infos.get("numberOfUploadedFiles", 0)
+
+        if source == "uploads":
+            sourcename = "numberOfUploadedFiles"
+        else:
+            sourcename = "numberOfResultedFiles"
+
+        nf = infos.get(sourcename, 0)
 
         names = []
         for idx in range(nf):
-            name = self.downloadFile(request, idx, "uploads", **kwargs)
+            name = self.downloadFile(request, idx, "uploads", destdir)
             names.append(name)
 
         return names
+
+
+    def downloadJobFiles(self, request, **kwargs):
+        return self.downloadFiles(request, "uploads", **kwargs)
 
 
     def downloadResults(self, request, **kwargs):
-        if not self.checkAuth():
-            return None
-
-        infos = self.requestInfo(request)
-        nf = infos.get("numberOfResultedFiles", 0)
-
-        names = []
-        for idx in range(nf):
-            name = self.download_file(request, idx, "results", **kwargs)
-            names.append(name)
-
-        return names
+        return self.downloadFiles(request, "results", **kwargs)
 
 
     def connect(self):
@@ -308,4 +310,7 @@ class MimiqConnection:
             logging.info(f"Starting authentication server on port {port} (http://localhost:{port})")
             while self.access_token is None:
                 httpd.handle_request()
+
+    def isOpen(self):
+        return self.refresher_task is not None and self.refresher_task.is_alive() and (self.access_token is not None)
 
