@@ -3,21 +3,34 @@ from http.server import HTTPServer
 import logging
 import os
 import os.path
+import io
 import re
 import requests 
-import socketserver
+from requests.adapters import HTTPAdapter
 from time import sleep
 import threading
-import webbrowser
 
 # import the connection handler
 from .handler import AuthenticationHandler
 
 
+class TimeoutHTTPAdapter(HTTPAdapter):
+    def __init__(self, *args, **kwargs):
+        if "timeout" in kwargs:
+            self.timeout = kwargs["timeout"]
+            del kwargs["timeout"]
+        super().__init__(*args, **kwargs)
+
+    def send(self, request, **kwargs):
+        timeout = kwargs.get("timeout")
+        if timeout is None and hasattr(self, 'timeout'):
+            kwargs["timeout"] = self.timeout
+        return super().send(request, **kwargs)
+
+
 class MimiqConnection:
-    def __init__(self, url='http://vps-f8c698f6.vps.ovh.net', timeout=1):
+    def __init__(self, url='http://vps-f8c698f6.vps.ovh.net'):
         self.url = url
-        self.timeout=timeout
 
         # refresher related variables
         self.refresher_lock = threading.Lock()
@@ -28,8 +41,13 @@ class MimiqConnection:
         self.access_token = None
         self.refresh_token = None
 
+        # session for doing requests
+        self.session = requests.Session()
+        self.session.mount('http://', TimeoutHTTPAdapter(timeout=(1,10)))
+        self.session.mount('https://', TimeoutHTTPAdapter(timeout=(1,10)))
 
-    def connect_user(self, email, password):
+
+    def connectUser(self, email, password):
         "Authenticate to the remote server with the given credentials (email and password)."
         endpoint = "/api/sign-in"
 
@@ -40,7 +58,7 @@ class MimiqConnection:
         }
 
         # ask for access tokens
-        response = requests.post(self.url + endpoint, json=data, timeout=self.timeout)
+        response = self.session.post(self.url + endpoint, json=data, headers={"Connection": "close"})
 
         if response.status_code == 200:
             tokens = response.json()
@@ -50,8 +68,11 @@ class MimiqConnection:
                 self.access_token = tokens["token"]
                 self.refresh_token = tokens["refreshToken"]
 
+            # update the session headers
+            self.updateSessionHeaders()
+
             # refresher thread, running in the background
-            self.start_refresher()
+            self.startRefresher()
 
             logging.info("Authentication successful.")
 
@@ -65,7 +86,7 @@ class MimiqConnection:
 
         # ask for access tokens
         print(f"sending request to {self.url} + {endpoint}")
-        response = requests.post(self.url + endpoint, json=data, timeout=self.timeout)
+        response = self.session.post(self.url + endpoint, json=data, headers={"Connection": "close"})
 
         if response.status_code == 200:
             tokens = response.json()
@@ -75,8 +96,10 @@ class MimiqConnection:
                 self.access_token = tokens["token"]
                 self.refresh_token = tokens["refreshToken"]
 
+            self.updateSessionHeaders()
+
             # refresher thread, running in the background
-            self.start_refresher()
+            self.startRefresher()
 
             logging.info("Authentication successful.")
 
@@ -86,7 +109,7 @@ class MimiqConnection:
 
         return response
 
-    def connect_token(self, token):
+    def connectToken(self, token):
         "Authenticate to the remote server with the given refresh token"
 
         # set the refresh token
@@ -98,12 +121,13 @@ class MimiqConnection:
 
         if status:
             logging.info("Authentication successfull.")
-            self.start_refresher()
+            self.updateSessionHeaders()
+            self.startRefresher()
         else:
             logging.error("Authentication failed.")
 
 
-    def start_refresher(self):
+    def startRefresher(self):
         "Start a refresher task"
         self.refresher_task = threading.Thread(target=self.refresher)
         self.refresher_task.start()
@@ -131,11 +155,11 @@ class MimiqConnection:
             }
 
         # ask for a new access token
-        response = requests.post(self.url + endpoint, json=data, timeout=self.timeout)
+        response = self.session.post(self.url + endpoint, json=data, headers={"Connection": "close"})
 
         # check if the response is valid
         if response.status_code != 200:
-            return false
+            return False
 
         tokens = response.json()
 
@@ -144,11 +168,16 @@ class MimiqConnection:
             self.access_token = tokens["token"]
             self.refresh_token = tokens["refreshToken"]
 
-        return true
+        self.updateSessionHeaders()
+
+        return True
 
 
     def request(self, name, label, uploads):
         "Request an execution to the remote server"
+
+        if not self.checkAuth():
+            return None
 
         endpoint = "/api/request"
 
@@ -156,11 +185,11 @@ class MimiqConnection:
 
         for file in uploads:
             if isinstance(file, io.IOBase) and not file.closed:
-                data.append(("uploads", (os.path.basename(file.name), f)))
+                data.append(("uploads", (os.path.basename(file.name), file)))
             else: 
                 data.append(("uploads", (os.path.basename(file), open(file, "rb"))))
                 
-        response = requests.post(self.url + endpoint, files=data, headers=self.authorization_headers())
+        response = self.session.post(self.url + endpoint, files=data)
         
         if response.status_code != 200:
             logging.error(f"File upload failed with status code {response.status_code}")
@@ -169,42 +198,62 @@ class MimiqConnection:
         return response.json()["executionRequestId"]
 
 
-    def requestinfo(self, request):
+    def requestInfo(self, request):
+        if not self.checkAuth():
+            return None
+
         endpoint = f"/api/request/{request}"
         
-        headers = self.authorization_headers(extra_headers={"Content-Type": "application/json"})
-
-        response = requests.get(self.url + endpoint, headers=headers)
+        response = self.session.get(self.url + endpoint)
 
         if response.status_code != 200:
-            print(f"Failed to retrieve execution details for {request}. Server responded with {response.status_cde}")
-            return None
+            print(f"Failed to retrieve execution details for {request}. Server responded with {response.status_code}")
+            return {}
 
         return response.json()
 
 
-    def authorization_headers(self, extra_headers = {}):
+    def updateSessionHeaders(self):
         # fetch the access token
         with self.refresher_lock:
             token = self.access_token
 
         # build the headers
-        headers = { "Authorization": f"Bearer {token}" }
-        headers.update(extra_headers)
-
-        return headers
+        self.session.headers.update({ "Authorization": f"Bearer {token}"})
 
 
-    def download_file(self, request, index, type, destdir=f"./{request}"):
+    def checkAuth(self):
+        with self.refresher_lock:
+            if self.access_token is None:
+                logging.error("Not yet authenticated.")
+                return False
+
+        return True
+
+
+    def downloadFile(self, request, index, type, destdir=None):
+        if not self.checkAuth():
+            return None
+
+        if destdir is None:
+            destdir = os.path.join("./", request)
+
         endpoint = f"/api/files/{request}/{index}?source={type}"
 
-        response = requests.get(self.url + endpoint, headers=headers)
+        response = self.session.get(self.url + endpoint)
 
-        if response.status_code != 200:
+        if response.status_code >= 300:
             logging.error(f"Failed to retrieve {type} files for {request}. Server responded with {response.status_code}")
             return None
 
-        filename = re.findall('filename="(.+)"', response.headers.get('Content-Disposition'))
+        filename = re.findall('filename="(.+)"', response.headers.get('Content-Disposition'))[0]
+        print(f"Saving {filename} in {destdir}")
+
+        # if the directory alreayd exists send a warning, otherwise create it
+        try:
+            os.mkdir(destdir)
+        except FileExistsError:
+            logging.warning(f"Directory {destdir} already exists.")
 
         # Should never happen, but just in case.
         # If it does, we can't do anything about it here. We need to patch the server
@@ -217,36 +266,30 @@ class MimiqConnection:
         with open(os.path.join(destdir, filename), 'wb') as f:
             f.write(response.content)
 
-        return name
+        return filename
 
 
-    def downloadjobfiles(self, request, **kwargs):
-        infos = self.requestinfo(request)
+    def downloadJobFiles(self, request, **kwargs):
+        if not self.checkAuth():
+            return None
+
+        infos = self.requestInfo(request)
         nf = infos.get("numberOfUploadedFiles", 0)
-
-        # if the directory alreayd exists send a warning, otherwise create it
-        try:
-            os.mkdir(destdir)
-        except FileExistsError:
-            logging.warning(f"Directory {destdir} already exists.")
 
         names = []
         for idx in range(nf):
-            name = self.download_file(request, idx, "uploads", **kwargs)
+            name = self.downloadFile(request, idx, "uploads", **kwargs)
             names.append(name)
 
         return names
 
 
-    def downloadresults(self, request, **kwargs):
-        infos = self.requestinfo(request)
-        nf = infos.get("numberOfResultedFiles", 0)
+    def downloadResults(self, request, **kwargs):
+        if not self.checkAuth():
+            return None
 
-        # if the directory alreayd exists send a warning, otherwise create it
-        try:
-            os.mkdir(destdir)
-        except FileExistsError:
-            logging.warning(f"Directory {destdir} already exists.")
+        infos = self.requestInfo(request)
+        nf = infos.get("numberOfResultedFiles", 0)
 
         names = []
         for idx in range(nf):
