@@ -1,26 +1,21 @@
-"""The code defines a Python class called MimiqConnection which allows a user to authenticate with a remote server,
-upload and download files to and from the server, and retrieve execution details for a given execution request ID.
-The class depends on the requests and mimetypes modules, which must be imported in the calling script."""
-import requests 
-import threading
-import os
+from functools import partial
 from http.server import HTTPServer
-import socketserver
-import urllib.parse
+import logging
+import os
 import os.path
-import mimetypes
+import re
+import requests 
+import socketserver
+from time import sleep
 import threading
 import webbrowser
-from time import sleep
-import re
-import logging
-from functools import partial
 
+# import the connection handler
 from .handler import AuthenticationHandler
 
 
 class MimiqConnection:
-    def __init__(self, url='http://vps-f8c698f6.vps.ovh.net/', timeout=1):
+    def __init__(self, url='http://vps-f8c698f6.vps.ovh.net', timeout=1):
         self.url = url
         self.timeout=timeout
 
@@ -34,7 +29,7 @@ class MimiqConnection:
         self.refresh_token = None
 
 
-    def authenticate(self, email, password):
+    def connect_user(self, email, password):
         "Authenticate to the remote server with the given credentials (email and password)."
         endpoint = "/api/sign-in"
 
@@ -64,8 +59,34 @@ class MimiqConnection:
             reason = response.json()["message"]
             logging.error(f"Authentication failed with status code {response.status_code} and reason: {reason}")
 
+    def _weblogin(self, data):
+        "Authenticate to the remote server with the given credentials. But return the response."
+        endpoint = "/api/sign-in"
 
-    def authenticate(self, token):
+        # ask for access tokens
+        print(f"sending request to {self.url} + {endpoint}")
+        response = requests.post(self.url + endpoint, json=data, timeout=self.timeout)
+
+        if response.status_code == 200:
+            tokens = response.json()
+
+            # set the access tokens
+            with self.refresher_lock:
+                self.access_token = tokens["token"]
+                self.refresh_token = tokens["refreshToken"]
+
+            # refresher thread, running in the background
+            self.start_refresher()
+
+            logging.info("Authentication successful.")
+
+        else:
+            reason = response.json()["message"]
+            logging.error(f"Authentication failed with status code {response.status_code} and reason: {reason}")
+
+        return response
+
+    def connect_token(self, token):
         "Authenticate to the remote server with the given refresh token"
 
         # set the refresh token
@@ -235,11 +256,13 @@ class MimiqConnection:
         return names
 
 
-    def authenticate(self):
-        handler = partial(AuthenticationHandler, lambda email, password: self.authenticate(email, password))
+    def connect(self):
+        "Authenticate to the remote services by taking credentials from a locally shown login page"
+        handler = partial(AuthenticationHandler, lambda data: self._weblogin(data))
         with HTTPServer(('', 0), handler) as httpd:
             port = httpd.server_port
             print(f"Starting authentication server on port {port} (http://localhost:{port})")
             logging.info(f"Starting authentication server on port {port} (http://localhost:{port})")
             while self.access_token is None:
                 httpd.handle_request()
+
