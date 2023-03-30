@@ -1,3 +1,8 @@
+#
+# Copyright © 2023 University of Strasbourg. All Rights Reserved.
+# See AUTHORS.md for the list of authors.
+#
+
 from http.server import BaseHTTPRequestHandler
 import json
 import mimetypes

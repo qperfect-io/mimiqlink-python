@@ -1,9 +1,11 @@
 # MimiqLink (`mimiqlink-python`)
 
-## TODO
+Library for connecting to **QPerfect**'s remote services for the MIMIQ Emulator.
 
-- [ ] add a description of the library in the readme
-- [ ] better errors in a more pythonesque way
-- [ ] test all the function
-- [ ] add examples in the readme
-- [ ] add progress bars to uploads and download (advanced, nor urgent)
+# COPYRIGHT
+
+Copyright © 2023 University of Strasbourg. All Rights Reserved.
+
+# AUTHORS
+
+See the [AUTHORS.md](AUTHORS.md) file for a list of authors
