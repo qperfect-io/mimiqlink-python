@@ -2,6 +2,21 @@
 
 Library for connecting to **QPerfect**'s remote services for the MIMIQ Emulator.
 
+## Installation
+
+
+## Usage
+
+```python
+import mimiqlink
+
+conn = mimiqlink.MimiqConnection()
+conn.connectuser("email","password")
+conn.request("name","label",["file 1 name","file 2 name",...])
+job=conn.downloadFiles("executionRequestId","1","uploads")
+
+``` 
+
 # COPYRIGHT
 
 Copyright © 2023 University of Strasbourg. All Rights Reserved.
