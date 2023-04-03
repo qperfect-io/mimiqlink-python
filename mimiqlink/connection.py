@@ -16,7 +16,7 @@ from time import sleep
 import threading
 
 # import the connection handler
-from handler import AuthenticationHandler
+from .handler import AuthenticationHandler
 
 
 class TimeoutHTTPAdapter(HTTPAdapter):
