@@ -3,7 +3,7 @@
 Library for connecting to **QPerfect**'s remote services for the MIMIQ Emulator.
 
 ## Installation
-
+pip install mimiqlink
 
 ## Usage
 

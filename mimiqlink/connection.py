@@ -2,7 +2,6 @@
 # Copyright © 2023 University of Strasbourg. All Rights Reserved.
 # See AUTHORS.md for the list of authors.
 #
-
 from functools import partial
 from http.server import HTTPServer
 import logging
@@ -16,7 +15,7 @@ from time import sleep
 import threading
 
 # import the connection handler
-from .handler import AuthenticationHandler
+from handler import AuthenticationHandler
 
 
 class TimeoutHTTPAdapter(HTTPAdapter):
@@ -318,4 +317,3 @@ class MimiqConnection:
 
     def isOpen(self):
         return self.refresher_task is not None and self.refresher_task.is_alive() and (self.access_token is not None)
-
