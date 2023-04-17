@@ -3,7 +3,7 @@
 # See AUTHORS.md for the list of authors.
 #
 
-from mimiqlink.connection import MimiqConnection
+from .connection import MimiqConnection
 
 __version__ = "0.1.0"
 
