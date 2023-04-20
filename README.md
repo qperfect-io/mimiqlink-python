@@ -11,7 +11,7 @@ pip install mimiqlink
 import mimiqlink
 
 conn = mimiqlink.MimiqConnection()
-conn.connectuser("email","password")
+conn.connectUser("email","password")
 conn.connect() #for authentication through MIMIQ service manually
 conn.request("name","label",["file 1 name","file 2 name",...])
 job=conn.downloadFiles("executionRequestId","1","uploads")
