@@ -309,7 +309,7 @@ class MimiqConnection:
 
         names = []
         for idx in range(nf):
-            name = self.downloadFile(request, idx, "uploads", destdir)
+            name = self.downloadFile(request, idx, source, destdir)
             names.append(name)
 
         return names
