@@ -223,6 +223,21 @@ class MimiqConnection:
 
         return response.json()
 
+    def isJobDone(self, request):
+        infos = self.requestInfo(request)
+        status = infos["status"]
+        return status == "DONE" or status == "ERROR"
+
+    def isJobFailed(self, request):
+        infos = self.requestInfo(request)
+        status = infos["status"]
+        return status == "ERROR"
+
+    def isJobStarted(self, request):
+        infos = self.requestInfo(request)
+        status = infos["status"]
+        return status != "NEW"
+
     def updateSessionHeaders(self):
         # fetch the access token
         with self.refresher_lock:
@@ -239,17 +254,17 @@ class MimiqConnection:
 
         return True
 
-    def downloadFile(self, request, index, type, destdir):
+    def downloadFile(self, request, index, filetype, destdir):
         if not self.checkAuth():
             return None
 
-        endpoint = f"/api/files/{request}/{index}?source={type}"
+        endpoint = f"/api/files/{request}/{index}?source={filetype}"
 
         response = self.session.get(self.url + endpoint)
 
         if response.status_code >= 300:
             logging.error(
-                f"Failed to retrieve {type} files for {request}. Server responded with {response.status_code}")
+                f"Failed to retrieve {filetype} files for {request}. Server responded with {response.status_code}")
             return None
 
         filename = re.findall(
