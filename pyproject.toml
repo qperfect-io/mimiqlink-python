@@ -1,8 +1,8 @@
 [tool.poetry]
 name = "mimiqlink"
-version = "0.1.0"
+version = "0.1.1"
 description = ""
-authors = ["Guido Masella <guido.masella@gmail.com>"]
+authors = ["Guido Masella <guido.masella@gmail.com>", "Vase Moeini <vmoeini@unistra.fr>"]
 readme = "README.md"
 
 [tool.poetry.dependencies]
