@@ -8,6 +8,7 @@ import json
 import mimetypes
 import os
 
+
 class AuthenticationHandler(BaseHTTPRequestHandler):
     def __init__(self, authenticate_function, *args, **kwargs):
         self.authenticate_function = authenticate_function
@@ -20,9 +21,10 @@ class AuthenticationHandler(BaseHTTPRequestHandler):
         try:
             if self.path == '/':
                 self.path = '/index.html'
-            filepath = os.getcwd() + '/public' + self.path
 
-            print(f"opening {filepath}")
+            public_dir = os.path.join(os.path.dirname(__file__), 'public')
+            filepath = os.path.join(public_dir, self.path.lstrip('/'))
+
             with open(filepath, 'rb') as file:
                 content = file.read()
                 mimetype, _ = mimetypes.guess_type(filepath)
@@ -34,7 +36,6 @@ class AuthenticationHandler(BaseHTTPRequestHandler):
                 self.wfile.write(content)
         except:
             self.send_error(404)
-
 
     def do_POST(self):
         if self.path == '/api/login':
