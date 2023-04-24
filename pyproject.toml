@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "mimiqlink"
-version = "0.1.1"
+version = "0.1.2"
 description = ""
 authors = ["Guido Masella <guido.masella@gmail.com>", "Vase Moeini <vmoeini@unistra.fr>"]
 readme = "README.md"
