@@ -22,7 +22,7 @@ class AuthenticationHandler(BaseHTTPRequestHandler):
             if self.path == '/':
                 self.path = '/index.html'
 
-            public_dir = os.path.join(os.path.dirname(__file__), '../public')
+            public_dir = os.path.join(os.path.dirname(__file__), 'public')
             filepath = os.path.join(public_dir, self.path.lstrip('/'))
 
             with open(filepath, 'rb') as file:
