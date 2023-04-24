@@ -36,7 +36,7 @@ class TimeoutHTTPAdapter(HTTPAdapter):
 
 
 class MimiqConnection:
-    def __init__(self, url='http://vps-f8c698f6.vps.ovh.net'):
+    def __init__(self, url='https://mimiq.qperfect.io'):
         self.url = url
 
         # refresher related variables
@@ -307,11 +307,11 @@ class MimiqConnection:
 
     def connect(self):
         "Authenticate to the remote services by taking credentials from a locally shown login page"
-        handler = partial(AuthenticationHandler,
-                          lambda data: self._weblogin(data))
-        with HTTPServer(('', 0), handler) as httpd:
+        h = partial(AuthenticationHandler,
+                    lambda data: self._weblogin(data))
+        with HTTPServer(('', 0), h) as httpd:
             port = httpd.server_port
-            logging.info(
+            print(
                 f"Starting authentication server on port {port} (http://localhost:{port})")
             while self.access_token is None:
                 httpd.handle_request()
