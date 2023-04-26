@@ -13,6 +13,7 @@ import requests
 from requests.adapters import HTTPAdapter
 from time import sleep
 import threading
+import webbrowser
 
 # import the connection handler
 from mimiqlink.handler import AuthenticationHandler
@@ -93,7 +94,6 @@ class MimiqConnection:
         endpoint = "/api/sign-in"
 
         # ask for access tokens
-        print(f"sending request to {self.url} + {endpoint}")
         response = self.session.post(
             self.url + endpoint, json=data, headers={"Connection": "close"})
 
@@ -328,6 +328,7 @@ class MimiqConnection:
             port = httpd.server_port
             print(
                 f"Starting authentication server on port {port} (http://localhost:{port})")
+            webbrowser.open(f"http://localhost:{port}", new=2)
             while self.access_token is None:
                 httpd.handle_request()
 
