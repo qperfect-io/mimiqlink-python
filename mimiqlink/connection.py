@@ -282,7 +282,7 @@ class MimiqConnection:
 
         filename = re.findall(
             'filename="(.+)"', response.headers.get('Content-Disposition'))[0]
-        print(f"Saving {filename} in {destdir}")
+        #print(f"Saving {filename} in {destdir}")
 
         # Should never happen, but just in case.
         # If it does, we can't do anything about it here. We need to patch the server
