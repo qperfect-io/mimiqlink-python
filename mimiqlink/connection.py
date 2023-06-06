@@ -57,6 +57,7 @@ class MimiqConnection:
         self.refresher_lock = threading.Lock()
         self.refresher_task = None
         self.refresher_interval = 15 * 60
+        self.refresher_stop = False
 
         # tokens
         self.access_token = None
@@ -157,7 +158,17 @@ class MimiqConnection:
     def refresher(self):
         "Refresher function. Will refresh the access token with the refresh token every configured interval."
         while True:
-            sleep(self.refresher_interval)
+
+            # check the stop flag every second
+            for i in range(self.refresher_interval):
+                sleep(1)
+                with self.refresher_lock:
+                    if self.refresher_stop:
+                        break
+
+            with self.refresher_lock:
+                if self.refresher_stop:
+                    break
 
             status = self.refresh()
 
@@ -357,6 +368,18 @@ class MimiqConnection:
             self.url = data['url']
             token = data['token']
             self.connectToken(token)
+
+    def close(self):
+        # ask the refresher to stop
+        with self.refresher_lock:
+            self.refresher_stop = True
+
+        # join the thread
+        self.refresher_task.join()
+
+        # clean the tokens
+        self.access_token = None
+        self.refresh_token = None
 
     def isOpen(self):
         a = self.refresher_task is not None
