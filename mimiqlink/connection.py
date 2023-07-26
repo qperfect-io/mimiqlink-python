@@ -205,7 +205,7 @@ class MimiqConnection:
 
         return True
 
-    def request(self, name, label, uploads):
+    def request(self, emulatortype, name, label, timeout, uploads):
         "Request an execution to the remote server"
 
         if not self.checkAuth():
@@ -213,7 +213,12 @@ class MimiqConnection:
 
         endpoint = "/api/request"
 
-        data = [("name", (None, name)), ("label", (None, label))]
+        data = [
+            ("name", (None, name)),
+            ("label", (None, label)),
+            ("emulatorType",(None, emulatortype)),
+            ("timeout", (None, timeout))
+        ]
 
         for file in uploads:
             if isinstance(file, io.IOBase) and not file.closed:
@@ -232,6 +237,21 @@ class MimiqConnection:
 
         return response.json()["executionRequestId"]
 
+    def stopexecution(self, request):
+        if not self.checkAuth():
+            return None
+
+        endpoint = f"/api/request/stop-execution/{request}"
+
+        response = self.session.post(self.url + endpoint)
+
+        if response.status_code != 200:
+            logging.error(
+                f"Failed to stop the execution {request}. Server responded with {response.status_code}.")
+            return None
+
+        return None
+
     def requestInfo(self, request):
         if not self.checkAuth():
             return None
@@ -241,7 +261,7 @@ class MimiqConnection:
         response = self.session.get(self.url + endpoint)
 
         if response.status_code != 200:
-            print(
+            logging.error(
                 f"Failed to retrieve execution details for {request}. Server responded with {response.status_code}")
             return {}
 
