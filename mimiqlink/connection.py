@@ -336,11 +336,11 @@ class MimiqConnection:
         if destdir is None:
             destdir = os.path.join("./", request)
 
-        # if the directory alreayd exists send a warning, otherwise create it
-        try:
-            os.mkdir(destdir)
-        except FileExistsError:
-            logging.warning(f"Directory {destdir} already exists.")
+        # # if the directory alreayd exists send a warning, otherwise create it
+        # try:
+        #     os.mkdir(destdir)
+        # except FileExistsError:
+        #     logging.warning(f"Directory {destdir} already exists.")
 
         infos = self.requestInfo(request)
 
