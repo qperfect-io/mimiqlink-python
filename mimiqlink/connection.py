@@ -4,9 +4,9 @@
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
-# 
+#
 #     http://www.apache.org/licenses/LICENSE-2.0
-# 
+#
 # Unless required by applicable law or agreed to in writing, software
 # distributed under the License is distributed on an "AS IS" BASIS,
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -31,6 +31,10 @@ import webbrowser
 # import the connection handler
 from mimiqlink.handler import AuthenticationHandler
 
+QPERFECT_CLOUD = "https://mimiq.qperfect.io/api"
+
+QPERFECT_CLOUD2 = "https://mimiqfast.qperfect.io/api"
+
 
 class TimeoutHTTPAdapter(HTTPAdapter):
     def __init__(self, *args, **kwargs):
@@ -50,8 +54,16 @@ class TimeoutHTTPAdapter(HTTPAdapter):
 
 
 class MimiqConnection:
-    def __init__(self, url='https://mimiq.qperfect.io'):
-        self.url = url
+    """Connection to the MIMIQ remote services.
+
+    It handles the authentication and the requests.
+    """
+
+    def __init__(self, url=None):
+        if url is None:
+            self.url = QPERFECT_CLOUD
+        else:
+            self.url = url
 
         # refresher related variables
         self.refresher_lock = threading.Lock()
@@ -70,7 +82,7 @@ class MimiqConnection:
 
     def connectUser(self, email, password):
         "Authenticate to the remote server with the given credentials (email and password)."
-        endpoint = "/api/sign-in"
+        endpoint = "/sign-in"
 
         # prepare the request
         data = {
@@ -105,7 +117,7 @@ class MimiqConnection:
 
     def _weblogin(self, data):
         "Authenticate to the remote server with the given credentials. But return the response."
-        endpoint = "/api/sign-in"
+        endpoint = "/sign-in"
 
         # ask for access tokens
         response = self.session.post(
@@ -178,7 +190,7 @@ class MimiqConnection:
 
     def refresh(self):
         "Refresh the access token using the refresh token."
-        endpoint = "/api/access-token"
+        endpoint = "/access-token"
 
         # prepare the request
         with self.refresher_lock:
@@ -211,12 +223,12 @@ class MimiqConnection:
         if not self.checkAuth():
             return None
 
-        endpoint = "/api/request"
+        endpoint = "/request"
 
         data = [
             ("name", (None, name)),
             ("label", (None, label)),
-            ("emulatorType",(None, emulatortype)),
+            ("emulatorType", (None, emulatortype)),
             ("timeout", (None, timeout))
         ]
 
@@ -241,7 +253,7 @@ class MimiqConnection:
         if not self.checkAuth():
             return None
 
-        endpoint = f"/api/request/stop-execution/{request}"
+        endpoint = f"/request/stop-execution/{request}"
 
         response = self.session.post(self.url + endpoint)
 
@@ -256,7 +268,7 @@ class MimiqConnection:
         if not self.checkAuth():
             return None
 
-        endpoint = f"/api/request/{request}"
+        endpoint = f"/request/{request}"
 
         response = self.session.get(self.url + endpoint)
 
@@ -302,7 +314,7 @@ class MimiqConnection:
         if not self.checkAuth():
             return None
 
-        endpoint = f"/api/files/{request}/{index}?source={filetype}"
+        endpoint = f"/files/{request}/{index}?source={filetype}"
 
         response = self.session.get(self.url + endpoint)
 
@@ -313,7 +325,7 @@ class MimiqConnection:
 
         filename = re.findall(
             'filename="(.+)"', response.headers.get('Content-Disposition'))[0]
-        #print(f"Saving {filename} in {destdir}")
+        # print(f"Saving {filename} in {destdir}")
 
         # Should never happen, but just in case.
         # If it does, we can't do anything about it here. We need to patch the server

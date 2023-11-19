@@ -14,6 +14,10 @@
 # limitations under the License.
 #
 
-from mimiqlink.connection import MimiqConnection
+from mimiqlink.connection import (
+    MimiqConnection,
+    QPERFECT_CLOUD,
+    QPERFECT_CLOUD2,
+)
 
-__all__ = ['MimiqConnection']
+__all__ = ['MimiqConnection', 'QPERFECT_CLOUD', 'QPERFECT_CLOUD2']
