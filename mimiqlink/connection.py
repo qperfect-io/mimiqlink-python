@@ -294,6 +294,11 @@ class MimiqConnection:
         status = infos["status"]
         return status != "NEW"
 
+    def isJobCanceled(self, request):
+        infos = self.requestInfo(request)
+        status = infos["status"]
+        return status == "CANCELED"
+
     def updateSessionHeaders(self):
         # fetch the access token
         with self.refresher_lock:
