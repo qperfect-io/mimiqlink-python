@@ -163,12 +163,21 @@ class MimiqConnection:
             logging.error("Authentication failed.")
 
     def startRefresher(self):
-        "Start a refresher task"
+        """Start the refresher thread.
+        """
+        # ensure that the refresher is not stopped immediately
+        with self.refresher_lock:
+            self.refresher_stop = False
+
+        # create and start the refresher
         self.refresher_task = threading.Thread(target=self.refresher)
         self.refresher_task.start()
 
     def refresher(self):
-        "Refresher function. Will refresh the access token with the refresh token every configured interval."
+        """Refresher function
+        Will refresh the access token with the refresh token at every
+        configured interval.
+        """
         while True:
 
             # check the stop flag every second
@@ -382,14 +391,23 @@ class MimiqConnection:
         return self.downloadFiles(request, "results", **kwargs)
 
     def connect(self):
+        fixed_port = 1444
         "Authenticate to the remote services by taking credentials from a locally shown login page"
-        h = partial(AuthenticationHandler,
-                    lambda data: self._weblogin(data))
-        with HTTPServer(('', 0), h) as httpd:
+        h = partial(AuthenticationHandler, lambda data: self._weblogin(data))
+
+        try:
+            # Attempt to create the server with the fixed port
+            httpd = HTTPServer(('localhost', fixed_port), h)
+            port = fixed_port
+        except OSError:
+            # If the fixed port is in use, use a random available port
+            httpd = HTTPServer(('localhost', 0), h)
             port = httpd.server_port
-            print(
-                f"Starting authentication server on port {port} (http://localhost:{port})")
-            webbrowser.open(f"http://localhost:{port}", new=2)
+
+        print(f"Starting authentication server on port {port} (http://localhost:{port})")
+        webbrowser.open(f"http://localhost:{port}", new=2)
+
+        with httpd:
             while self.access_token is None:
                 httpd.handle_request()
 
@@ -399,12 +417,22 @@ class MimiqConnection:
         with open(filepath, 'w') as f:
             json.dump({'token': self.refresh_token, 'url': self.url}, f)
 
-    def loadtoken(self, filepath="qperfect.json"):
+    @staticmethod
+    def loadtoken(filepath="qperfect.json"):
+        "Start a new connection and load the credentials from a file."
+
+        # This will allow to load the token from a file.
+        # The syntax will be:
+        #     MimiqConnection.loadtoken("qperfect.json")
+
         with open(filepath, 'r') as f:
             data = json.load(f)
-            self.url = data['url']
+            url = data.get('url', "")
             token = data['token']
-            self.connectToken(token)
+
+        conn = MimiqConnection(url)
+        conn.connectToken(token)
+        return conn
 
     def close(self):
         # ask the refresher to stop
