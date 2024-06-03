@@ -45,7 +45,7 @@ class TimeoutHTTPAdapter(HTTPAdapter):
 
     def send(self, request, **kwargs):
         timeout = kwargs.get("timeout")
-        if timeout is None and hasattr(self, 'timeout'):
+        if timeout is None and hasattr(self, "timeout"):
             kwargs["timeout"] = self.timeout
         # HACK: fix here. used to put timeout=0 (and hence timeout=None) in upload (otherwise we have a timeout)
         if timeout == 0:
@@ -77,22 +77,20 @@ class MimiqConnection:
 
         # session for doing requests
         self.session = requests.Session()
-        self.session.mount('http://', TimeoutHTTPAdapter(timeout=(1, None)))
-        self.session.mount('https://', TimeoutHTTPAdapter(timeout=(1, None)))
+        self.session.mount("http://", TimeoutHTTPAdapter(timeout=(1, None)))
+        self.session.mount("https://", TimeoutHTTPAdapter(timeout=(1, None)))
 
     def connectUser(self, email, password):
         "Authenticate to the remote server with the given credentials (email and password)."
         endpoint = "/sign-in"
 
         # prepare the request
-        data = {
-            "email": email,
-            "password": password
-        }
+        data = {"email": email, "password": password}
 
         # ask for access tokens
         response = self.session.post(
-            self.url + endpoint, json=data, headers={"Connection": "close"})
+            self.url + endpoint, json=data, headers={"Connection": "close"}
+        )
 
         if response.status_code == 200:
             tokens = response.json()
@@ -113,7 +111,8 @@ class MimiqConnection:
         else:
             reason = response.json()["message"]
             logging.error(
-                f"Authentication failed with status code {response.status_code} and reason: {reason}")
+                f"Authentication failed with status code {response.status_code} and reason: {reason}"
+            )
 
     def _weblogin(self, data):
         "Authenticate to the remote server with the given credentials. But return the response."
@@ -121,7 +120,8 @@ class MimiqConnection:
 
         # ask for access tokens
         response = self.session.post(
-            self.url + endpoint, json=data, headers={"Connection": "close"})
+            self.url + endpoint, json=data, headers={"Connection": "close"}
+        )
 
         if response.status_code == 200:
             tokens = response.json()
@@ -141,7 +141,8 @@ class MimiqConnection:
         else:
             reason = response.json()["message"]
             logging.error(
-                f"Authentication failed with status code {response.status_code} and reason: {reason}")
+                f"Authentication failed with status code {response.status_code} and reason: {reason}"
+            )
 
         return response
 
@@ -163,8 +164,7 @@ class MimiqConnection:
             logging.error("Authentication failed.")
 
     def startRefresher(self):
-        """Start the refresher thread.
-        """
+        """Start the refresher thread."""
         # ensure that the refresher is not stopped immediately
         with self.refresher_lock:
             self.refresher_stop = False
@@ -179,7 +179,6 @@ class MimiqConnection:
         configured interval.
         """
         while True:
-
             # check the stop flag every second
             for i in range(self.refresher_interval):
                 sleep(1)
@@ -194,8 +193,7 @@ class MimiqConnection:
             status = self.refresh()
 
             if not status:
-                logging.error(
-                    "Access token refresh failed. Connection is closed")
+                logging.error("Access token refresh failed. Connection is closed")
 
     def refresh(self):
         "Refresh the access token using the refresh token."
@@ -203,13 +201,12 @@ class MimiqConnection:
 
         # prepare the request
         with self.refresher_lock:
-            data = {
-                "refreshToken": self.refresh_token
-            }
+            data = {"refreshToken": self.refresh_token}
 
         # ask for a new access token
         response = self.session.post(
-            self.url + endpoint, json=data, headers={"Connection": "close"})
+            self.url + endpoint, json=data, headers={"Connection": "close"}
+        )
 
         # check if the response is valid
         if response.status_code != 200:
@@ -238,42 +235,59 @@ class MimiqConnection:
             ("name", (None, name)),
             ("label", (None, label)),
             ("emulatorType", (None, emulatortype)),
-            ("timeout", (None, timeout))
+            ("timeout", (None, timeout)),
         ]
 
         for file in uploads:
             if isinstance(file, io.IOBase) and not file.closed:
                 data.append(("uploads", (os.path.basename(file.name), file)))
             else:
-                data.append(
-                    ("uploads", (os.path.basename(file), open(file, "rb"))))
+                data.append(("uploads", (os.path.basename(file), open(file, "rb"))))
 
-        response = self.session.post(
-            self.url + endpoint, files=data, timeout=0)
+        response = self.session.post(self.url + endpoint, files=data, timeout=0)
 
         if response.status_code != 200:
-            logging.error(
-                f"File upload failed with status code {response.status_code}")
+            logging.error(f"File upload failed with status code {response.status_code}")
             return None
 
         return response.json()["executionRequestId"]
 
     def stopexecution(self, request):
+        "Stop the execution of a given request."
         if not self.checkAuth():
             return None
 
-        endpoint = f"/request/stop-execution/{request}"
+        endpoint = f"/stop-execution/{request}"
 
         response = self.session.post(self.url + endpoint)
 
         if response.status_code != 200:
             logging.error(
-                f"Failed to stop the execution {request}. Server responded with {response.status_code}.")
+                f"Failed to stop the execution {request}. Server responded with {response.status_code}."
+            )
+            return None
+
+        return None
+
+    def deletefiles(self, request):
+        "Delete the files for a given request."
+        if not self.checkAuth():
+            return None
+
+        endpoint = f"/delete-files/{request}"
+
+        response = self.session.post(self.url + endpoint)
+
+        if response.status_code != 200:
+            logging.error(
+                f"Failed to delete the files for {request}. Server responded with {response.status_code}."
+            )
             return None
 
         return None
 
     def requestInfo(self, request):
+        "Retrieve the execution details for a given request."
         if not self.checkAuth():
             return None
 
@@ -283,27 +297,85 @@ class MimiqConnection:
 
         if response.status_code != 200:
             logging.error(
-                f"Failed to retrieve execution details for {request}. Server responded with {response.status_code}")
+                f"Failed to retrieve execution details for {request}. Server responded with {response.status_code}"
+            )
             return {}
 
         return response.json()
 
+    def requests(self, **kwargs):
+        "Retrieve the list of requests from the server."
+        if not self.checkAuth():
+            return None
+
+        query = ""
+
+        for key, value in kwargs.items():
+            if query == "":
+                query += f"?{key}={value}"
+            else:
+                query += f"&{key}={value}"
+
+        endpoint = "/request"
+        response = self.session.get(self.url + endpoint + query)
+        if response.status_code != 200:
+            logging.error(
+                f"Failed to retrieve the list of requests. Server responded with {response.status_code}"
+            )
+            return None
+        return response.json()["executions"]["docs"]
+
+    def printRequests(self, **kwargs):
+        "Print the list of requests from the server."
+        reqs = self.requests(**kwargs)
+
+        numnew = sum("status" in req and req["status"] == "NEW" for req in reqs)
+        numrunning = sum("status" in req and req["status"] == "RUNNING" for req in reqs)
+
+        print(f"{len(reqs)} jobs of which {numnew} NEW and {numrunning} RUNNING:")
+        #
+        # all but the last one
+        for req in reqs[:-1]:
+            print(f"├── Request {req["_id"]}")
+            print(f"│   ├── Name: {req["name"]}")
+            print(f"│   ├── Label: {req["label"]}")
+            print(f"│   ├── Status: {req["status"]}")
+            print(f"│   ├── User Email: {req["user"]["email"]}")
+            print(f"│   ├── Created Date: {req["creationDate"]}")
+            print(f"│   ├── Running Date: {req.get("runningDate", "None")}")
+            print(f"│   └── Done Date: {req.get("doneDate", "None")}")
+
+        # the last one
+        req = reqs[-1]
+        print(f"└── Request {req["_id"]}")
+        print(f"    ├── Name: {req["name"]}")
+        print(f"    ├── Label: {req["label"]}")
+        print(f"    ├── Status: {req["status"]}")
+        print(f"    ├── User Email: {req["user"]["email"]}")
+        print(f"    ├── Created Date: {req["creationDate"]}")
+        print(f"    ├── Running Date: {req.get("runningDate", "None")}")
+        print(f"    └── Done Date: {req.get("doneDate", "None")}")
+
     def isJobDone(self, request):
+        "Check if the job is done."
         infos = self.requestInfo(request)
         status = infos["status"]
         return status == "DONE" or status == "ERROR"
 
     def isJobFailed(self, request):
+        "Check if the job failed."
         infos = self.requestInfo(request)
         status = infos["status"]
         return status == "ERROR"
 
     def isJobStarted(self, request):
+        "Check if the job is started."
         infos = self.requestInfo(request)
         status = infos["status"]
         return status != "NEW"
 
     def isJobCanceled(self, request):
+        "Check if the job is canceled."
         infos = self.requestInfo(request)
         status = infos["status"]
         return status == "CANCELED"
@@ -334,23 +406,24 @@ class MimiqConnection:
 
         if response.status_code >= 300:
             logging.error(
-                f"Failed to retrieve {filetype} files for {request}. Server responded with {response.status_code}")
+                f"Failed to retrieve {filetype} files for {request}. Server responded with {response.status_code}"
+            )
             return None
 
         filename = re.findall(
-            'filename="(.+)"', response.headers.get('Content-Disposition'))[0]
+            'filename="(.+)"', response.headers.get("Content-Disposition")
+        )[0]
         # print(f"Saving {filename} in {destdir}")
 
         # Should never happen, but just in case.
         # If it does, we can't do anything about it here. We need to patch the server
         if not filename:
-            logging.error(
-                f"Something went wrong. Server is missing the filename")
+            logging.error(f"Something went wrong. Server is missing the filename")
             return None
 
         # at this point we should have a valid filename and a valid directory
         # so we write everything to the file
-        with open(os.path.join(destdir, filename), 'wb') as f:
+        with open(os.path.join(destdir, filename), "wb") as f:
             f.write(response.content)
 
         return filename
@@ -391,20 +464,24 @@ class MimiqConnection:
         return self.downloadFiles(request, "results", **kwargs)
 
     def connect(self):
-        fixed_port = 1444
         "Authenticate to the remote services by taking credentials from a locally shown login page"
+
+        fixed_port = 1444
+
         h = partial(AuthenticationHandler, lambda data: self._weblogin(data))
 
         try:
             # Attempt to create the server with the fixed port
-            httpd = HTTPServer(('localhost', fixed_port), h)
+            httpd = HTTPServer(("localhost", fixed_port), h)
             port = fixed_port
         except OSError:
             # If the fixed port is in use, use a random available port
-            httpd = HTTPServer(('localhost', 0), h)
+            httpd = HTTPServer(("localhost", 0), h)
             port = httpd.server_port
 
-        print(f"Starting authentication server on port {port} (http://localhost:{port})")
+        print(
+            f"Starting authentication server on port {port} (http://localhost:{port})"
+        )
         webbrowser.open(f"http://localhost:{port}", new=2)
 
         with httpd:
@@ -412,10 +489,11 @@ class MimiqConnection:
                 httpd.handle_request()
 
     def savetoken(self, filepath="qperfect.json"):
+        "Save the current token to a file."
         if self.refresh_token is None:
             self.connect()
-        with open(filepath, 'w') as f:
-            json.dump({'token': self.refresh_token, 'url': self.url}, f)
+        with open(filepath, "w") as f:
+            json.dump({"token": self.refresh_token, "url": self.url}, f)
 
     @staticmethod
     def loadtoken(filepath="qperfect.json"):
@@ -425,16 +503,17 @@ class MimiqConnection:
         # The syntax will be:
         #     MimiqConnection.loadtoken("qperfect.json")
 
-        with open(filepath, 'r') as f:
+        with open(filepath, "r") as f:
             data = json.load(f)
-            url = data.get('url', "")
-            token = data['token']
+            url = data.get("url", "")
+            token = data["token"]
 
         conn = MimiqConnection(url)
         conn.connectToken(token)
         return conn
 
     def close(self):
+        "Close the connection."
         # ask the refresher to stop
         with self.refresher_lock:
             self.refresher_stop = True
@@ -447,6 +526,7 @@ class MimiqConnection:
         self.refresh_token = None
 
     def isOpen(self):
+        "Check if the connection is open."
         a = self.refresher_task is not None
         b = self.refresher_task.is_alive()
         c = self.access_token is not None
