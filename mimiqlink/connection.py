@@ -333,28 +333,29 @@ class MimiqConnection:
         numrunning = sum("status" in req and req["status"] == "RUNNING" for req in reqs)
 
         print(f"{len(reqs)} jobs of which {numnew} NEW and {numrunning} RUNNING:")
-        #
+
         # all but the last one
         for req in reqs[:-1]:
-            print(f"├── Request {req["_id"]}")
-            print(f"│   ├── Name: {req["name"]}")
-            print(f"│   ├── Label: {req["label"]}")
-            print(f"│   ├── Status: {req["status"]}")
-            print(f"│   ├── User Email: {req["user"]["email"]}")
-            print(f"│   ├── Created Date: {req["creationDate"]}")
-            print(f"│   ├── Running Date: {req.get("runningDate", "None")}")
-            print(f"│   └── Done Date: {req.get("doneDate", "None")}")
+            print(f"├── Request {req['_id']}")
+            print(f"│   ├── Name: {req['name']}")
+            print(f"│   ├── Label: {req['label']}")
+            print(f"│   ├── Status: {req['status']}")
+            print(f"│   ├── User Email: {req['user']['email']}")
+            print(f"│   ├── Created Date: {req['creationDate']}")
+            print(f"│   ├── Running Date: {req.get('runningDate', 'None')}")
+            print(f"│   └── Done Date: {req.get('doneDate', 'None')}")
 
         # the last one
         req = reqs[-1]
-        print(f"└── Request {req["_id"]}")
-        print(f"    ├── Name: {req["name"]}")
-        print(f"    ├── Label: {req["label"]}")
-        print(f"    ├── Status: {req["status"]}")
-        print(f"    ├── User Email: {req["user"]["email"]}")
-        print(f"    ├── Created Date: {req["creationDate"]}")
-        print(f"    ├── Running Date: {req.get("runningDate", "None")}")
-        print(f"    └── Done Date: {req.get("doneDate", "None")}")
+        print(f"└── Request {req['_id']}")
+        print(f"    ├── Name: {req['name']}")
+        print(f"    ├── Label: {req['label']}")
+        print(f"    ├── Status: {req['status']}")
+        print(f"    ├── User Email: {req['user']['email']}")
+        print(f"    ├── Created Date: {req['creationDate']}")
+        print(f"    ├── Running Date: {req.get('runningDate', 'None')}")
+        print(f"    └── Done Date: {req.get('doneDate', 'None')}")
+
 
     def isJobDone(self, request):
         "Check if the job is done."
