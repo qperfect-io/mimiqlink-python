@@ -1,5 +1,5 @@
 #
-# Copyright © 2022-2023 University of Strasbourg. All Rights Reserved.
+# Copyright © 2022-2024 University of Strasbourg. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -294,6 +294,7 @@ class MimiqConnection:
 
         self.__updateSessionHeaders()
         self.__updateUserLimits()
+        return True
 
     def request(self, emulatortype, name, label, timeout, uploads):
         "Request an execution to the remote server"
@@ -530,13 +531,22 @@ class MimiqConnection:
         # The syntax will be:
         #     MimiqConnection.loadtoken("qperfect.json")
 
-        with open(filepath, "r") as f:
-            data = json.load(f)
-            url = data.get("url", "")
-            token = data["token"]
+        try:
+            with open(filepath, "r") as f:
+                data = json.load(f)
+                url = data.get("url", "")
+                token = data["token"]
+        except Exception as e:
+            getLogger().error(f"Error reading token file: {e}")
+            raise ConnectionError("Failed to read token file.")
 
         conn = MimiqConnection(url)
-        conn.connectToken(token)
+        try:
+            conn.connectToken(token)
+        except ConnectionError as e:
+            getLogger().error(f"Authentication failed: {e}")
+            raise ConnectionError("Authentication failed. Unable to connect using the stored token.")
+        
         return conn
 
     def close(self):

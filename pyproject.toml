@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "mimiqlink"
-version = "0.7.0"
+version = "0.7.1"
 description = ""
 authors = ["QPerfect <guido.masella@qperfect.io>"]
 readme = "README.md"
