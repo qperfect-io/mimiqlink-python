@@ -127,11 +127,19 @@ class MimiqConnection:
 
     def connectUser(self, email, password):
         "Authenticate to the remote server with the given credentials (email and password)."
+
+        if self.isOpen():
+            self.close()
+
         self._weblogin({"email": email, "password": password})
+
         return self
 
     def connectToken(self, token):
         "Authenticate to the remote server with the given refresh token"
+
+        if self.isOpen():
+            self.close()
 
         # set the refresh token
         with self.refresher_lock:
@@ -151,6 +159,9 @@ class MimiqConnection:
 
     def connectWeb(self):
         "Authenticate to the remote services by taking credentials from a locally shown login page"
+
+        if self.isOpen():
+            self.close()
 
         preferred_port = 1444
 
@@ -215,6 +226,9 @@ class MimiqConnection:
         >>> conn = MimiqConnection()
         >>> conn.connect("john.doe@example.com", "password")
         """
+        if self.isOpen():
+            return self
+
         if len(args) == 0:
             return self.connectWeb()
 
@@ -523,31 +537,35 @@ class MimiqConnection:
         with open(filepath, "w") as f:
             json.dump({"token": self.refresh_token, "url": self.url}, f)
 
-    @staticmethod
-    def loadtoken(filepath="qperfect.json"):
-        "Start a new connection and load the credentials from a file."
-
-        # This will allow to load the token from a file.
-        # The syntax will be:
-        #     MimiqConnection.loadtoken("qperfect.json")
-
+    def loadtoken(self, filepath="qperfect.json"):
+        # Attempt to read the token file
         try:
             with open(filepath, "r") as f:
                 data = json.load(f)
-                url = data.get("url", "")
-                token = data["token"]
-        except Exception as e:
-            getLogger().error(f"Error reading token file: {e}")
-            raise ConnectionError("Failed to read token file.")
+                saved_url = data.get("url", "")
+                token = data.get("token")
 
-        conn = MimiqConnection(url)
+            # Check if the current URL matches the saved URL in the token file
+            if self.url != saved_url:
+                raise ValueError(
+                    f"The URL in the token file ({saved_url}) does not match the current URL ({self.url}). Authentication failed."
+                )
+
+        except Exception as e:
+            # Log error and re-raise as ConnectionError
+            getLogger().error(f"Error reading token file: {e}")
+            raise ConnectionError("Failed to read token file.") from e
+
+        # Establish a new connection using the token
         try:
-            conn.connectToken(token)
+            self.connectToken(token)
+            return self
         except ConnectionError as e:
+            # Log error and re-raise
             getLogger().error(f"Authentication failed: {e}")
-            raise ConnectionError("Authentication failed. Unable to connect using the stored token.")
-        
-        return conn
+            raise ConnectionError(
+                "Authentication failed. Unable to connect using the stored token."
+            ) from e
 
     def close(self):
         "Close the connection."
@@ -566,10 +584,11 @@ class MimiqConnection:
 
     def isOpen(self):
         "Check if the connection is open."
-        a = self.refresher_task is not None
-        b = self.refresher_task.is_alive()
-        c = self.access_token is not None
-        return a and b and c
+        return (
+            self.refresher_task is not None
+            and self.refresher_task.is_alive()
+            and self.access_token is not None
+        )
 
     def checkUserLimits(self, limits=None):
         if limits is None:
