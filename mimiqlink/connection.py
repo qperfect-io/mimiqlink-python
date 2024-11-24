@@ -650,7 +650,11 @@ class MimiqConnection:
                 if max_timeout is not None:
                     max_timeout = round(max_timeout)
                     result += f"├── Max time limit per request: {max_timeout} minutes\n"
-
+                    result += f"├── Default time limit is equal to max time limit: {max_timeout} minutes\n"
+            else:
+                result += f"├── Max time limit is: Infinite\n"
+                result += f"├── Default time limit is: 30 minutes\n"
+                
         result += "└── status: " + ("open" if self.isOpen() else "closed") + "\n"
 
         return result
