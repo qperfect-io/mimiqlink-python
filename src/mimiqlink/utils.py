@@ -1,5 +1,5 @@
 #
-# Copyright © 2022-2024 University of Strasbourg. All Rights Reserved.
+# Copyright © 2022-2025 QPerfect. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -14,10 +14,10 @@
 # limitations under the License.
 #
 
-from mimiqlink.connection import (
-    MimiqConnection,
-    QPERFECT_CLOUD,
-    QPERFECT_CLOUD2,
-)
+import logging
 
-__all__ = ['MimiqConnection', 'QPERFECT_CLOUD', 'QPERFECT_CLOUD2']
+
+def getLogger():
+    logger = logging.getLogger("mimiqlink")
+    logger.setLevel(logging.INFO)
+    return logger
