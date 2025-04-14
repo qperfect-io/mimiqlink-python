@@ -159,25 +159,25 @@ class AbstractConnection(ABC):
     def isJobDone(self, request):
         """Check if the job is done."""
         infos = self.requestInfo(request)
-        status = infos.status()
+        status = infos.status
         return status == "DONE" or status == "ERROR"
 
     def isJobFailed(self, request):
         """Check if the job failed."""
         infos = self.requestInfo(request)
-        status = infos.status()
+        status = infos.status
         return status == "ERROR"
 
     def isJobStarted(self, request):
         """Check if the job is started."""
         infos = self.requestInfo(request)
-        status = infos.status()
+        status = infos.status
         return status != "NEW"
 
     def isJobCanceled(self, request):
         """Check if the job is canceled."""
         infos = self.requestInfo(request)
-        status = infos.status()
+        status = infos.status
         return status == "CANCELED"
 
     def stopexecution(self, request):
