@@ -1,6 +1,6 @@
 [project]
 name = "mimiqlink"
-version = "0.8.1"
+version = "0.8.2"
 description = "Core client library for the QPerfect MIMIQ Cloud API"
 authors = [{ name = "Guido Masella", email = "guido.masella@qperfect.io" }]
 readme = "README.md"

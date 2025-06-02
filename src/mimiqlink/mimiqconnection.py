@@ -61,7 +61,7 @@ class MimiqConnection(AbstractConnection):
 
     def get_api_url(self, *paths):
         """Get the API URL for the given paths."""
-        base = urljoin(self.url, "api")
+        base = urljoin(self.url + "/", "api")
         if not paths:
             return base
 

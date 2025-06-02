@@ -84,7 +84,7 @@ class PlanqkConnection(AbstractConnection):
 
     def get_api_url(self, *paths):
         """Get the API URL for the given paths."""
-        base = urljoin(self.url, "planqk")
+        base = urljoin(self.url + "/", "api/planqk/")
         if not paths:
             return base
 
