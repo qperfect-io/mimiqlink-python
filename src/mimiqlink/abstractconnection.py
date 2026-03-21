@@ -157,31 +157,49 @@ class AbstractConnection(ABC):
         return RequestInfoList(response.json()["executions"]["docs"])
 
     def isJobDone(self, request):
-        """Check if the job is done."""
+        """Check if the job is done.
+
+        Returns True if the job finished successfully, with an error, or was
+        canceled, and False otherwise.
+        """
         infos = self.requestInfo(request)
         status = infos.status
-        return status == "DONE" or status == "ERROR"
+        return status != "NEW" and status != "RUNNING"
 
     def isJobFailed(self, request):
-        """Check if the job failed."""
+        """Check if the job failed.
+
+        Returns True if the job's status is ``ERROR``.
+        """
         infos = self.requestInfo(request)
         status = infos.status
         return status == "ERROR"
 
     def isJobStarted(self, request):
-        """Check if the job is started."""
+        """Check if the job has started executing.
+
+        Returns True if the job's status is not ``NEW``.
+        """
         infos = self.requestInfo(request)
         status = infos.status
         return status != "NEW"
 
     def isJobCanceled(self, request):
-        """Check if the job is canceled."""
+        """Check if the job has been canceled.
+
+        Returns True if the job's status is ``CANCELED``.
+        """
         infos = self.requestInfo(request)
         status = infos.status
         return status == "CANCELED"
 
-    def stopexecution(self, request):
-        """Stop the execution of a given request."""
+    def stopExecution(self, request):
+        """Stop the execution of a given request.
+
+        Sends a cancellation request to the server. If the job is ``NEW``,
+        it will be immediately canceled. If it is ``RUNNING``, a stop signal
+        will be sent to the executor.
+        """
         self.checkAuth()
 
         endpoint = f"stop-execution/{request}"
@@ -195,7 +213,11 @@ class AbstractConnection(ABC):
         return None
 
     def deleteFiles(self, request):
-        """Delete the files for a given request."""
+        """Delete the uploaded and result files for a given request.
+
+        Removes both input and output files associated with the execution
+        from the server.
+        """
         self.checkAuth()
 
         endpoint = f"delete-files/{request}"
@@ -272,9 +294,27 @@ class AbstractConnection(ABC):
         return names
 
     def downloadJobFiles(self, request, **kwargs):
-        """Download the input files for a given request."""
+        """Download the uploaded input files for a given request.
+
+        Args:
+            request: The execution identifier.
+            **kwargs: Additional keyword arguments passed to ``downloadFiles``
+                (e.g. ``destdir``).
+
+        Returns:
+            list: List of downloaded filenames.
+        """
         return self.downloadFiles(request, "uploads", **kwargs)
 
     def downloadResults(self, request, **kwargs):
-        """Download the result files for a given request."""
+        """Download the result files for a given request.
+
+        Args:
+            request: The execution identifier.
+            **kwargs: Additional keyword arguments passed to ``downloadFiles``
+                (e.g. ``destdir``).
+
+        Returns:
+            list: List of downloaded filenames.
+        """
         return self.downloadFiles(request, "results", **kwargs)
