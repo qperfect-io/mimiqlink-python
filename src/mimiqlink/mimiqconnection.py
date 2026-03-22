@@ -177,34 +177,32 @@ class MimiqConnection(AbstractConnection):
     def connect(self, *args, **kwargs):
         """Connect to the remote server.
 
-        If no arguments are provided, the connection will be established using the web login.
-        If one argument is provided, it will be used as the token.
-        If two arguments are provided, they will be used as the email and password.
+        Supports three calling conventions:
+
+        - ``connect()`` — opens a browser-based login page (recommended).
+        - ``connect(token)`` — authenticates with a refresh token.
+        - ``connect(email, password)`` — authenticates with credentials.
+
+        If the connection is already open, this is a no-op.
+
+        Internally delegates to :meth:`connectWeb`, :meth:`connectToken`,
+        or :meth:`connectUser` respectively.
 
         Examples:
 
-        - Connect using the web login:
+        .. code-block:: python
 
-        >>> conn = MimiqConnection()
-        >>> conn.connect()
+            # Browser login (recommended)
+            conn = MimiqConnection()
+            conn.connect()
 
-        or simply:
+            # Token-based login
+            conn = MimiqConnection()
+            conn.connect("mytoken")
 
-        >>> conn = MimiqConnection().connect()
-
-        - Connect using a token:
-
-        >>> conn = MimiqConnection()
-        >>> conn.connect("mytoken")
-
-        or simply:
-
-        >>> conn = MimiqConnection().connect("mytoken")
-
-        - Connect using a token and a user:
-
-        >>> conn = MimiqConnection()
-        >>> conn.connect("john.doe@example.com", "password")
+            # Credential-based login
+            conn = MimiqConnection()
+            conn.connect("john.doe@example.com", "password")
         """
         if self.isOpen():
             return self
