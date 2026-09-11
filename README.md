@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="logo.svg" alt="MIMIQ" width="380">
+</p>
+
 # MIMIQ Link Python
 
 [![Build Status](https://github.com/qperfect-io/mimiqlink-python/workflows/Test/badge.svg)](https://github.com/qperfect-io/mimiqlink-python/actions)

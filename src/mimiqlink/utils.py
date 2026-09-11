@@ -15,19 +15,23 @@
 #
 
 import logging
+import os
 import sys
 
 def getLogger():
     logger = logging.getLogger("mimiqlink")
+    default_log_level = os.environ.get("MIMIQLINK_LOG_LEVEL", "INFO")
 
     # Only add handler if it's not already added
     if not logger.hasHandlers():
         handler = logging.StreamHandler(sys.stdout)
-        handler.setLevel(logging.INFO)
+        handler.setLevel(default_log_level)
         formatter = logging.Formatter("[%(levelname)s] %(message)s")
         handler.setFormatter(formatter)
         logger.addHandler(handler)
+    
+    if (logger.level == logging.NOTSET):
+        logger.setLevel(default_log_level)
 
-    logger.setLevel(logging.INFO)
     return logger
 

@@ -16,7 +16,7 @@
 #
 
 from datetime import datetime
-
+from tabulate import tabulate
 
 def format_datetime(dt_str):
     """Format a datetime string or timestamp in a more readable way."""
@@ -56,10 +56,10 @@ class RequestInfo:
     """Class to hold and display information about a MIMIQ request."""
 
     STATUS_COLORS = {
-        "NEW": "#3498db",  # Blue
-        "RUNNING": "#f39c12",  # Orange
-        "DONE": "#2ecc71",  # Green
-        "ERROR": "#e74c3c",  # Red
+        "NEW": "#3498db",       # Blue
+        "RUNNING": "#f39c12",   # Orange
+        "DONE": "#2ecc71",      # Green
+        "ERROR": "#e74c3c",     # Red
         "CANCELED": "#95a5a6",  # Gray
     }
 
@@ -244,45 +244,17 @@ class RequestInfoList:
         if not self.requests:
             return "No requests available"
 
-        # Create summary line
-        running_count = self.status_counts.get("RUNNING", 0)
-        new_count = self.status_counts.get("NEW", 0)
-        done_count = self.status_counts.get("DONE", 0)
-        error_count = self.status_counts.get("ERROR", 0)
-        canceled_count = self.status_counts.get("CANCELED", 0)
-
         summary = f"Total: {len(self.requests)} requests - "
-        status_parts = []
-        if new_count > 0:
-            status_parts.append(f"{new_count} NEW")
-        if running_count > 0:
-            status_parts.append(f"{running_count} RUNNING")
-        if done_count > 0:
-            status_parts.append(f"{done_count} DONE")
-        if error_count > 0:
-            status_parts.append(f"{error_count} ERROR")
-        if canceled_count > 0:
-            status_parts.append(f"{canceled_count} CANCELED")
+        status_parts = [
+            f"{self.status_counts.get(label)} {label}"
+            for label in self.status_counts
+        ]
 
         summary += ", ".join(status_parts)
+        header = ["ID","LABEL", "STATUS"]
+        rows = [ [req.id, req.label[:18], req.status] for req in self.requests ]
 
-        # Format header line with wider ID column (24 characters + some padding)
-        header = "ID                          LABEL                STATUS"
-
-        # Create the result list with summary and header
-        result = [summary, header, "-" * len(header)]
-
-        # Add a single line for each request
-        for req in self.requests:
-            # Format each field with fixed width (ID width increased to 26)
-            req_id = f"{req.id:<26}"
-            label = f"{req.label[:18]:<18}" + ("..." if len(req.label) > 18 else "  ")
-            status = f"{req.status:<8}"
-
-            line = f"{req_id}{label}{status}"
-            result.append(line)
-
-        return "\n".join(result)
+        return f"{summary}\n{tabulate(rows, headers=header)}"
 
     def _repr_html_(self):
         """

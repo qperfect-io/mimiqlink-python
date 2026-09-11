@@ -1,23 +1,26 @@
 [project]
 name = "mimiqlink"
-version = "0.8.4"
+version = "0.9.0"
 description = "Core client library for the QPerfect MIMIQ Cloud API"
 authors = [{ name = "Guido Masella", email = "guido.masella@qperfect.io" }]
 readme = "README.md"
-requires-python = ">=3.9,<4"
-dependencies = ["requests (>=2.31,<3)"]
+requires-python = ">=3.10,<4"
+dependencies = [
+    "requests (>=2.34,<3)",
+    "python-keycloak (>=4.7,<5)",
+    "tabulate (>=0.10,<0.11)",
+]
 license = "Apache-2.0"
 
 [project.urls]
 Documentation = "https://docs.qperfect.io"
-Repository = "https://github.com/qperfect-io/mimiqcircuits-python"
+Repository = "https://github.com/qperfect-io/mimiqlink-python"
 
 [tool.poetry]
 packages = [{ include = "mimiqlink", from = "src" }]
 
-[tool.poetry.group.test.dependencies]
-pytest = "^8.2"
-responses = "^0.25.7"
+[dependency-groups]
+test = ["pytest (>=9.1,<10)", "responses (>=0.26,<0.27)"]
 
 [build-system]
 requires = ["poetry-core>=2.0.0,<3.0.0"]

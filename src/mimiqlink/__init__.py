@@ -20,8 +20,7 @@ from mimiqlink.abstractconnection import (
 
 from mimiqlink.mimiqconnection import (
     MimiqConnection,
-    QPERFECT_CLOUD,
-    QPERFECT_DEV,
+    QPERFECT_CLOUD
 )
 
 from mimiqlink.planqkconnection import (
@@ -29,10 +28,16 @@ from mimiqlink.planqkconnection import (
     PLANQK_API,
 )
 
+from mimiqlink.qhiveconnection import (
+    QhiveConnection,
+    QPERFECT_DEV,
+)
+
 __all__ = [
     "AbstractConnection",
     "MimiqConnection",
     "PlanqkConnection",
+    "QhiveConnection",
     "QPERFECT_CLOUD",
     "QPERFECT_DEV",
     "PLANQK_API",

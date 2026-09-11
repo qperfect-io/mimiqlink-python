@@ -31,7 +31,6 @@ from mimiqlink.handler import AuthenticationHandler
 from mimiqlink.utils import getLogger
 
 QPERFECT_CLOUD = "https://mimiq.qperfect.io"
-QPERFECT_DEV = "https://mimiqfast.qperfect.io"
 
 
 class MimiqConnection(AbstractConnection):
