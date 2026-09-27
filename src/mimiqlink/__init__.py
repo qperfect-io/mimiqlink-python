@@ -16,6 +16,7 @@
 
 from mimiqlink.abstractconnection import (
     AbstractConnection,
+    MimiqConnectionError,
 )
 
 from mimiqlink.mimiqconnection import (
@@ -35,6 +36,7 @@ from mimiqlink.qhiveconnection import (
 
 __all__ = [
     "AbstractConnection",
+    "MimiqConnectionError",
     "MimiqConnection",
     "PlanqkConnection",
     "QhiveConnection",

@@ -7,6 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.9.1] — 2026-09-27
+
+### Added
+
+- `MimiqConnectionError` is the single exception the library raises, and is
+  exported from `mimiqlink`. It derives from the builtin `ConnectionError`, and
+  the old `mimiqlink.abstractconnection.ConnectionError` name still resolves to
+  it, so both ways of catching a failure keep working.
+
+### Fixed
+
+- The library no longer raises two unrelated exception classes that happen to
+  share a name. `abstractconnection` defined its own `ConnectionError`, which
+  shadowed the builtin inside that module only: seven raise sites used it and
+  the other thirty-three, in the connection types, raised the builtin. Catching
+  one missed the other.
+
+- `MimiqConnection.close()` no longer hangs. It held the refresher lock while
+  joining the refresher thread, and the thread needs that same lock once a
+  second to notice it was asked to stop, so a closed connection never came
+  back. Reconnecting an already-open connection deadlocked the same way.
+
+### Tooling
+
+- The test suite drives the client against in-process stand-ins for the MIMIQ
+  and Quantum Hive APIs, covering authentication, token rotation, the job
+  lifecycle, downloads and the failure paths without reaching the network.
+- GitLab CI runs the suite on every supported interpreter, 3.10 through 3.14
+  and free-threaded 3.14, and builds the package.
+
 ## [0.9.0] — 2026-09-11
 
 ### Added

@@ -30,7 +30,7 @@ import json
 from mimiqlink.utils import getLogger
 from mimiqlink.infos import RequestInfo, RequestInfoList
 from mimiqlink.openidhandler import OpenIdConnectCallbackHandler
-from mimiqlink.abstractconnection import AbstractConnection
+from mimiqlink.abstractconnection import AbstractConnection, MimiqConnectionError
 
 QPERFECT_DEV = "https://mimiqfast.qperfect.io/api"
 _QPERFECT_AUTH_DEV = "https://mimiqfast.qperfect.io/auth/"
@@ -73,7 +73,7 @@ class QhiveConnection(AbstractConnection):
         if len(args) == 2:
             return self._connectDirect(*args)
 
-        raise ConnectionError(
+        raise MimiqConnectionError(
             "Invalid number of arguments. Expected 0, 1 (token) or 2 (username, password)."
         )
 
@@ -104,7 +104,7 @@ class QhiveConnection(AbstractConnection):
         return bool(user)
 
     def get_api_url(self, *paths):
-        raise ConnectionError("Not applicable to QHive connection")
+        raise MimiqConnectionError("Not applicable to QHive connection")
 
     def _connectStandard(self):
         preferred_port = 1444
@@ -132,7 +132,7 @@ class QhiveConnection(AbstractConnection):
                 httpd.handle_request()
 
         if not self.access_token:
-            raise ConnectionError(
+            raise MimiqConnectionError(
                 "Authentication failed. Unable to obtain access token."
             )
         return self
@@ -170,9 +170,9 @@ class QhiveConnection(AbstractConnection):
 
     def _assertConnection(self):
         if self.access_token is None:
-            raise ConnectionError("Connection is not open, make sure you are connected")
+            raise MimiqConnectionError("Connection is not open, make sure you are connected")
         if not self.isOpen() and not self._refreshToken():
-            raise ConnectionError("Stale connection, please connect again")
+            raise MimiqConnectionError("Stale connection, please connect again")
 
     def _authenticatedRequest(self, endpoint, method="GET", headers=None, **kwargs):
         headers = {} if headers is None else headers # Fresh blank dict
@@ -222,17 +222,17 @@ class QhiveConnection(AbstractConnection):
         response = self._authenticatedRequest("/jobs", "POST", data=form_data, files=file_uploads)
 
         if response.status_code != 200: 
-            raise ConnectionError(f"Failed to create request with status code {response.status_code}")
+            raise MimiqConnectionError(f"Failed to create request with status code {response.status_code}")
         requestId = response.text
 
         for file in circuit_files:
             response = self._authenticatedRequest(f"/files/{requestId}/circuit/{file['filename']}", "POST", data=file["upload"])
             if response.status_code != 201: #Created
-                raise ConnectionError(f"Failed upload circuit file with status code {response.status_code}")
+                raise MimiqConnectionError(f"Failed upload circuit file with status code {response.status_code}")
         
         response = self._authenticatedRequest(f"/jobs/{requestId}/commit", "PATCH")
         if response.status_code != 200: 
-            raise ConnectionError(f"Failed job commit with status code {response.status_code}")
+            raise MimiqConnectionError(f"Failed job commit with status code {response.status_code}")
 
         return requestId
 
@@ -243,7 +243,7 @@ class QhiveConnection(AbstractConnection):
         response = self._authenticatedRequest(f"/jobs/{request}")
 
         if response.status_code != 200:
-            raise ConnectionError(
+            raise MimiqConnectionError(
                 f"Failed to retrieve execution details for {request}. Server responded with {response.status_code}"
             )
 
@@ -255,7 +255,7 @@ class QhiveConnection(AbstractConnection):
 
         response = self._authenticatedRequest(f"/jobs")
         if response.status_code != 200:
-            raise ConnectionError(
+            raise MimiqConnectionError(
                 f"Failed to retrieve the list of requests. Server responded with {response.status_code}"
             )
 
@@ -291,7 +291,7 @@ class QhiveConnection(AbstractConnection):
 
         response = self._authenticatedRequest(f"/jobs/{request}/cancel", "PATCH")
         if response.status_code != 200:
-            raise ConnectionError(
+            raise MimiqConnectionError(
                 f"Failed to stop the execution {request}. Server responded with {response.status_code}."
             )
 
@@ -303,7 +303,7 @@ class QhiveConnection(AbstractConnection):
 
         response = self._authenticatedRequest(f"/jobs/{request}/cancel", "PATCH")
         if response.status_code != 200:
-            raise ConnectionError(
+            raise MimiqConnectionError(
                 f"Failed to stop the execution {request}. Server responded with {response.status_code}."
             )
 
@@ -315,9 +315,9 @@ class QhiveConnection(AbstractConnection):
 
         response = self._authenticatedRequest(f"/files/{request}", "DELETE")
         if response.status_code == 200:
-            raise ConnectionError("Could not delete files for job because it is not completed")
+            raise MimiqConnectionError("Could not delete files for job because it is not completed")
         if response.status_code != 202:
-            raise ConnectionError(f"Failed to delete files for job. Server responded with {response.status_code}.")
+            raise MimiqConnectionError(f"Failed to delete files for job. Server responded with {response.status_code}.")
         return None
 
 
@@ -340,22 +340,22 @@ class QhiveConnection(AbstractConnection):
         except Exception as e:
             # Log error and re-raise as ConnectionError
             getLogger().error(f"Error reading token file: {e}")
-            raise ConnectionError("Failed to read token file.") from e
+            raise MimiqConnectionError("Failed to read token file.") from e
 
         # Check if the current URLs match the saved URLs in the token file
         if self.url != saved_url:
-            raise ConnectionError(
+            raise MimiqConnectionError(
                 f"The URL in the token file ({saved_url}) does not match the current URL ({self.url})."
             )
         if self.auth_url != saved_auth_url:
-            raise ConnectionError(
+            raise MimiqConnectionError(
                 f"The authentication URL in the token file ({saved_auth_url}) does not match the current authentication URL ({self.auth_url})."
             )
 
         self.refresh_token = token
         self.access_token = None
         if not self._refreshToken():
-            raise ConnectionError("Failed to refresh connection using token, perhaps the token is stale and you must connect again")
+            raise MimiqConnectionError("Failed to refresh connection using token, perhaps the token is stale and you must connect again")
         self._assertConnection()
         return self
 
@@ -365,7 +365,7 @@ class QhiveConnection(AbstractConnection):
 
         response = self._authenticatedRequest(f"/files/{request}/{filetype}/{index}", "GET", allow_redirects=True)
         if response.status_code >= 300:
-            raise ConnectionError(
+            raise MimiqConnectionError(
                 f"Failed to retrieve {filetype} files for {request}. Server responded with {response.status_code}"
             )
 
@@ -386,7 +386,7 @@ class QhiveConnection(AbstractConnection):
 
         response = self._authenticatedRequest(f"/files/{request}/{source}")
         if response.status_code != 200:
-            raise ConnectionError(
+            raise MimiqConnectionError(
                 f"Failed to retrieve files for {request}. Server responded with {response.status_code}"
             )
         urlsToDownload = response.json()

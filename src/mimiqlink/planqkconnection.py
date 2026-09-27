@@ -22,7 +22,7 @@ from urllib.parse import urljoin
 import time
 
 # Base class for the connection
-from mimiqlink.abstractconnection import AbstractConnection
+from mimiqlink.abstractconnection import AbstractConnection, MimiqConnectionError
 
 # Import the logging utils
 from mimiqlink.utils import getLogger
@@ -110,7 +110,7 @@ class PlanqkConnection(AbstractConnection):
         response = requests.post(path, headers=headers, data=data, timeout=30)
 
         if response.status_code != 200:
-            raise ConnectionError(
+            raise MimiqConnectionError(
                 f"Failed to get PlanQK token. Server responded with {response.status_code}"
             )
 
@@ -153,7 +153,7 @@ class PlanqkConnection(AbstractConnection):
             )
 
             if self.consumer_key is None or self.consumer_secret is None:
-                raise ConnectionError(
+                raise MimiqConnectionError(
                     "No consumer key or secret provided and not found in environment variables."
                 )
 
@@ -179,7 +179,7 @@ class PlanqkConnection(AbstractConnection):
             token = self.token
 
         if token is None:
-            raise ConnectionError("Not yet authenticated.")
+            raise MimiqConnectionError("Not yet authenticated.")
 
         self.session.headers.update({"Authorization": f"Bearer {token.access_token}"})
 
@@ -269,7 +269,7 @@ class PlanqkConnection(AbstractConnection):
         """Check if the authentication is valid."""
         with self.token_lock:
             if self.token is None:
-                raise ConnectionError("Not yet authenticated to PlanQK API.")
+                raise MimiqConnectionError("Not yet authenticated to PlanQK API.")
 
     def __str__(self):
         result = f"PlanqkConnection:\n├── url: {self.url}\n"

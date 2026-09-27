@@ -22,7 +22,7 @@ import threading
 import webbrowser
 from urllib.parse import urljoin
 import time
-from mimiqlink.abstractconnection import AbstractConnection
+from mimiqlink.abstractconnection import AbstractConnection, MimiqConnectionError
 
 # Import the connection handler
 from mimiqlink.handler import AuthenticationHandler
@@ -85,7 +85,7 @@ class MimiqConnection(AbstractConnection):
 
         if response.status_code != 200:
             reason = response.json().get("message", "Unknown error")
-            raise ConnectionError(
+            raise MimiqConnectionError(
                 f"Authentication failed with status code {response.status_code} and reason: {reason}"
             )
 
@@ -128,7 +128,7 @@ class MimiqConnection(AbstractConnection):
         status = self.refresh()
 
         if not status:
-            raise ConnectionError("Authentication failed.")
+            raise MimiqConnectionError("Authentication failed.")
 
         getLogger().info("Authentication successful.")
         self.__updateSessionHeaders()
@@ -167,7 +167,7 @@ class MimiqConnection(AbstractConnection):
                 httpd.handle_request()
 
         if not self.access_token:
-            raise ConnectionError(
+            raise MimiqConnectionError(
                 "Authentication failed. Unable to obtain access token."
             )
 
@@ -215,18 +215,22 @@ class MimiqConnection(AbstractConnection):
         if len(args) == 2:
             return self.connectUser(*args)
 
-        raise ConnectionError(
+        raise MimiqConnectionError(
             "Invalid number of arguments. Expected 0, 1 (token) or 2 (username, password)."
         )
 
     def __startRefresher(self):
         """Start the refresher thread."""
 
-        # if the refresher is alreeady running stop it
+        # if the refresher is already running stop it
         with self.refresher_lock:
-            if self.refresher_task is not None and self.refresher_task.is_alive():
-                self.refresher_stop = True
-                self.refresher_task.join()
+            self.refresher_stop = True
+            running = self.refresher_task
+
+        # The refresher takes the lock once a second, so it can only see the
+        # stop flag while the lock is released: joining under it never returns.
+        if running is not None and running.is_alive():
+            running.join()
 
         # ensure that the refresher is not stopped immediately
         with self.refresher_lock:
@@ -270,7 +274,7 @@ class MimiqConnection(AbstractConnection):
 
         # check if the response is valid
         if response.status_code != 200:
-            raise ConnectionError(
+            raise MimiqConnectionError(
                 f"Failed to refresh the access token. Server responded with {response.status_code}"
             )
 
@@ -296,7 +300,7 @@ class MimiqConnection(AbstractConnection):
     def checkAuth(self):
         with self.refresher_lock:
             if self.access_token is None:
-                raise ConnectionError("Not yet authenticated.")
+                raise MimiqConnectionError("Not yet authenticated.")
 
     def savetoken(self, filepath="qperfect.json"):
         """Save the current token to a file."""
@@ -323,16 +327,16 @@ class MimiqConnection(AbstractConnection):
         except Exception as e:
             # Log error and re-raise as ConnectionError
             getLogger().error(f"Error reading token file: {e}")
-            raise ConnectionError("Failed to read token file.") from e
+            raise MimiqConnectionError("Failed to read token file.") from e
 
         # Establish a new connection using the token
         try:
             self.connectToken(token)
             return self
-        except ConnectionError as e:
+        except MimiqConnectionError as e:
             # Log error and re-raise
             getLogger().error(f"Authentication failed: {e}")
-            raise ConnectionError(
+            raise MimiqConnectionError(
                 "Authentication failed. Unable to connect using the stored token."
             ) from e
 
@@ -342,10 +346,14 @@ class MimiqConnection(AbstractConnection):
         # ask the refresher to stop
         with self.refresher_lock:
             self.refresher_stop = True
-            if self.refresher_task is not None and self.refresher_task.is_alive():
-                getLogger().info("Shutting down token refresher")
-                self.refresher_task.join()
-                getLogger().info(f"Task (done) @{hex(id(self.refresher_task))}")
+            task = self.refresher_task
+
+        # Joining under the lock deadlocks: the refresher needs the same lock
+        # once a second to notice that it was asked to stop.
+        if task is not None and task.is_alive():
+            getLogger().info("Shutting down token refresher")
+            task.join()
+            getLogger().info(f"Task (done) @{hex(id(task))}")
 
         # clean the tokens
         self.access_token = None
@@ -393,7 +401,7 @@ class MimiqConnection(AbstractConnection):
         response = self.session.get(self.get_api_url(endpoint))
 
         if response.status_code != 200:
-            raise ConnectionError(
+            raise MimiqConnectionError(
                 f"Failed to retrieve user limits. Server responded with {response.status_code}"
             )
 

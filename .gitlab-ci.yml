@@ -1,0 +1,59 @@
+stages:
+  - test
+  - build
+
+# One pipeline per change: on a merge request, on the two long-lived branches,
+# and on the tags a release pushes.
+workflow:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == "devel" || $CI_COMMIT_BRANCH == "main"
+    - if: $CI_COMMIT_TAG
+
+variables:
+  UV_CACHE_DIR: "$CI_PROJECT_DIR/.cache/uv"
+
+default:
+  image: python:3.12
+  before_script:
+    - pip install --quiet uv
+  cache:
+    key:
+      files:
+        - uv.lock
+    paths:
+      - .cache/uv
+
+# The suite runs on every interpreter the package claims to support, so a
+# `requires-python` of >=3.10 is a statement CI can back.
+test:
+  stage: test
+  parallel:
+    matrix:
+      - PYTHON: ["3.10", "3.11", "3.12", "3.13", "3.14"]
+  script:
+    - uv sync --python $PYTHON --group test
+    - uv run --python $PYTHON pytest -q
+
+# The package is pure Python and must stay that way: a dependency that ships an
+# extension without the free-threading marker would silently switch the GIL back
+# on for everyone importing mimiqlink.
+freethreading:
+  stage: test
+  script:
+    - uv python install 3.14t
+    - uv sync --python 3.14t --group test
+    - uv run --python 3.14t python -c "import sys, mimiqlink; assert not sys._is_gil_enabled(), 'importing mimiqlink re-enabled the GIL'"
+    - uv run --python 3.14t pytest -q
+
+# The release publishes with Poetry, so the build is worth exercising before a
+# tag makes it everyone's problem.
+build:
+  stage: build
+  script:
+    - pip install --quiet poetry
+    - poetry build
+  artifacts:
+    paths:
+      - dist/
+    expire_in: 1 week

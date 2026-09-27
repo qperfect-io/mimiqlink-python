@@ -45,10 +45,20 @@ class TimeoutHTTPAdapter(HTTPAdapter):
         return super().send(request, **kwargs)
 
 
-class ConnectionError(Exception):
-    """Exception raised for errors in the connection to the remote server."""
+class MimiqConnectionError(ConnectionError):
+    """Raised when a remote service refuses a request or cannot be reached.
+
+    It derives from the builtin :class:`ConnectionError`, so code that catches
+    that keeps working.
+    """
 
     pass
+
+
+# The library used to raise a class of its own named `ConnectionError` from
+# this module and the builtin from every other one. Both are this class now,
+# and the old name stays importable.
+ConnectionError = MimiqConnectionError
 
 
 class AbstractConnection(ABC):
@@ -115,7 +125,7 @@ class AbstractConnection(ABC):
         response = self.session.post(self.get_api_url(endpoint), files=data, timeout=0)
 
         if response.status_code != 200:
-            raise ConnectionError(
+            raise MimiqConnectionError(
                 f"File upload failed with status code {response.status_code}"
             )
 
@@ -130,7 +140,7 @@ class AbstractConnection(ABC):
         response = self.session.get(self.get_api_url(endpoint))
 
         if response.status_code != 200:
-            raise ConnectionError(
+            raise MimiqConnectionError(
                 f"Failed to retrieve execution details for {request}. Server responded with {response.status_code}"
             )
 
@@ -150,7 +160,7 @@ class AbstractConnection(ABC):
         endpoint = "request"
         response = self.session.get(self.get_api_url(endpoint) + query)
         if response.status_code != 200:
-            raise ConnectionError(
+            raise MimiqConnectionError(
                 f"Failed to retrieve the list of requests. Server responded with {response.status_code}"
             )
 
@@ -206,7 +216,7 @@ class AbstractConnection(ABC):
         response = self.session.post(self.get_api_url(endpoint))
 
         if response.status_code != 200:
-            raise ConnectionError(
+            raise MimiqConnectionError(
                 f"Failed to stop the execution {request}. Server responded with {response.status_code}."
             )
 
@@ -224,7 +234,7 @@ class AbstractConnection(ABC):
         response = self.session.post(self.get_api_url(endpoint))
 
         if response.status_code != 200:
-            raise ConnectionError(
+            raise MimiqConnectionError(
                 f"Failed to delete the files for {request}. Server responded with {response.status_code}."
             )
 
@@ -240,7 +250,7 @@ class AbstractConnection(ABC):
         response = self.session.get(url)
 
         if response.status_code >= 300:
-            raise ConnectionError(
+            raise MimiqConnectionError(
                 f"Failed to retrieve {filetype} files for {request}. Server responded with {response.status_code}"
             )
 
@@ -251,7 +261,7 @@ class AbstractConnection(ABC):
         # Should never happen, but just in case.
         # If it does, we can't do anything about it here. We need to patch the server
         if not filename:
-            raise ConnectionError(
+            raise MimiqConnectionError(
                 "Something went wrong. Server is missing the filename"
             )
 
