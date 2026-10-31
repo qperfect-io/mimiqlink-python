@@ -32,6 +32,7 @@ from mimiqlink.planqkconnection import (
 from mimiqlink.qhiveconnection import (
     QhiveConnection,
     QPERFECT_DEV,
+    QPERFECT_CLOUD_V2,
 )
 
 __all__ = [
@@ -41,6 +42,7 @@ __all__ = [
     "PlanqkConnection",
     "QhiveConnection",
     "QPERFECT_CLOUD",
+    "QPERFECT_CLOUD_V2",
     "QPERFECT_DEV",
     "PLANQK_API",
 ]

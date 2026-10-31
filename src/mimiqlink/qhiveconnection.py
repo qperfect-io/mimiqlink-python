@@ -32,6 +32,9 @@ from mimiqlink.infos import RequestInfo, RequestInfoList
 from mimiqlink.openidhandler import OpenIdConnectCallbackHandler
 from mimiqlink.abstractconnection import AbstractConnection, MimiqConnectionError
 
+QPERFECT_CLOUD_V2 = "https://mimiq.qperfect.io/v2/api"
+_QPERFECT_AUTH_CLOUD_V2 = "https://mimiq.qperfect.io/auth"
+
 QPERFECT_DEV = "https://mimiqfast.qperfect.io/api"
 _QPERFECT_AUTH_DEV = "https://mimiqfast.qperfect.io/auth/"
 
@@ -42,8 +45,10 @@ class QhiveConnection(AbstractConnection):
     """
 
     def __init__(self, url=None, auth_url=None):
-        self.url = QPERFECT_DEV if url is None else url
-        self.auth_url = _QPERFECT_AUTH_DEV if auth_url is None else auth_url
+        self.url = QPERFECT_CLOUD_V2 if url is None else url
+        if auth_url is None:
+            auth_url = _QPERFECT_AUTH_DEV if self.url == QPERFECT_DEV else _QPERFECT_AUTH_CLOUD_V2
+        self.auth_url = auth_url
 
         self.access_token = None
         self.refresh_token = None

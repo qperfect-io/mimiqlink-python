@@ -27,10 +27,16 @@ import json
 
 import pytest
 
-from mimiqlink import QhiveConnection, MimiqConnectionError
+from mimiqlink import QhiveConnection, MimiqConnectionError, QPERFECT_CLOUD_V2, QPERFECT_DEV
 
 
 # -- authentication ---------------------------------------------------------
+
+
+def test_known_urls_pick_their_auth_server():
+    assert QhiveConnection().url == QPERFECT_CLOUD_V2
+    assert QhiveConnection().auth_url == "https://mimiq.qperfect.io/auth/"
+    assert QhiveConnection(url=QPERFECT_DEV).auth_url == "https://mimiqfast.qperfect.io/auth/"
 
 
 def test_credentials_authenticate(qhiveserver):

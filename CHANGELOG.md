@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.10.0] — 2026-10-31
+
+### Added
+
+- `QPERFECT_CLOUD_V2`, the API URL of the QHIVE production deployment, is
+  exported from `mimiqlink`.
+
+### Changed
+
+- `QhiveConnection()` with no arguments now connects to the QHIVE production
+  deployment (`QPERFECT_CLOUD_V2`) instead of `QPERFECT_DEV`. To keep using
+  dev, pass `url=QPERFECT_DEV`; its authentication server is picked from the
+  URL.
+
 ## [0.9.1] — 2026-09-27
 
 ### Added
