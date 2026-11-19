@@ -14,6 +14,18 @@
 # limitations under the License.
 #
 
+"""Client for authentication and job management on the MIMIQ cloud.
+
+:class:`MimiqConnection` connects to the MIMIQ cloud (:data:`QPERFECT_CLOUD`),
+:class:`QhiveConnection` to Quantum Hive deployments
+(:data:`QPERFECT_CLOUD_V2`, :data:`QPERFECT_DEV`), and
+:class:`PlanqkConnection` to MIMIQ through the PlanQK gateway
+(:data:`PLANQK_API`). All of them share the interface of
+:class:`AbstractConnection` and raise :class:`MimiqConnectionError` when a
+service refuses a request. ``mimiqcircuits`` builds on these classes to
+submit circuits and download results.
+"""
+
 from mimiqlink.abstractconnection import (
     AbstractConnection,
     MimiqConnectionError,

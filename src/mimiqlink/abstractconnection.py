@@ -62,9 +62,20 @@ ConnectionError = MimiqConnectionError
 
 
 class AbstractConnection(ABC):
-    """Base class for connection to MIMIQ and other remote services.
+    """Base class for connections to MIMIQ and other remote services.
 
-    This abstract class defines the interface for all connection types.
+    It defines the interface shared by :class:`MimiqConnection`,
+    :class:`QhiveConnection` and :class:`PlanqkConnection`: authentication
+    (``connect``, ``close``, ``isOpen``, ``checkAuth``), job submission
+    (``request``), job inspection (``requestInfo``, ``requests``,
+    ``isJobDone`` and the other ``isJob*`` checks), cancellation
+    (``stopExecution``) and file transfer (``downloadResults``,
+    ``downloadJobFiles``, ``deleteFiles``). The methods implemented here talk
+    to the MIMIQ cloud REST API under :meth:`get_api_url`; subclasses for
+    other services override them.
+
+    Args:
+        url (str, optional): The base URL of the service.
     """
 
     def __init__(self, url=None):
@@ -77,34 +88,57 @@ class AbstractConnection(ABC):
 
     @abstractmethod
     def connect(self, *args, **kwargs):
-        """Establish a connection to the remote service."""
+        """Authenticate to the remote service and return the connection."""
         pass
 
     @abstractmethod
     def close(self):
-        """Close the connection to the remote service."""
+        """Log out and forget the stored credentials."""
         pass
 
     @abstractmethod
     def isOpen(self):
-        """Check if the connection is open."""
+        """Return True if the connection is authenticated."""
         pass
 
     @abstractmethod
     def checkAuth(self):
-        """Check if the authentication is valid."""
+        """Check that the connection is authenticated.
+
+        Subclasses raise :class:`MimiqConnectionError` or return False when
+        it is not.
+        """
         pass
 
     @abstractmethod
     def get_api_url(self, *paths):
-        """Get the API URL for the given paths.
+        """Return the URL of an API endpoint.
 
-        This method should join the base URL with the API prefix and the given paths.
+        Joins the base URL, the service's API prefix and ``paths`` with
+        ``/``.
         """
         pass
 
     def request(self, emulatortype, name, label, timeout, uploads):
-        """Request an execution to the remote server."""
+        """Upload files and create an execution on the remote service.
+
+        Args:
+            emulatortype (str): The type of executor, for example ``"CIRC"``
+                for circuit simulation.
+            name (str): The name of the execution (``mimiqcircuits`` passes
+                the simulation algorithm).
+            label (str): A label to identify the execution.
+            timeout (int): The time limit of the execution, in minutes.
+            uploads (list): The files to upload, as paths or open binary file
+                objects. Paths are opened and not closed.
+
+        Returns:
+            str: The identifier of the new execution.
+
+        Raises:
+            MimiqConnectionError: If the connection is not authenticated or
+                the service refuses the request.
+        """
         self.checkAuth()
 
         endpoint = "request"
@@ -132,7 +166,19 @@ class AbstractConnection(ABC):
         return response.json()["executionRequestId"]
 
     def requestInfo(self, request):
-        """Retrieve the execution details for a given request."""
+        """Fetch the details of an execution.
+
+        Args:
+            request (str): The execution identifier.
+
+        Returns:
+            RequestInfo: The execution's status, dates, file counts and the
+            rest of the data the service returns.
+
+        Raises:
+            MimiqConnectionError: If the connection is not authenticated or
+                the service refuses the request.
+        """
         self.checkAuth()
 
         endpoint = f"request/{request}"
@@ -147,7 +193,19 @@ class AbstractConnection(ABC):
         return RequestInfo(response.json())
 
     def requests(self, **kwargs):
-        """Retrieve the list of requests from the server."""
+        """Fetch the list of the user's executions.
+
+        Args:
+            **kwargs: Query parameters added to the request URL as
+                ``?key=value&...``, used to filter or page the list.
+
+        Returns:
+            RequestInfoList: The executions.
+
+        Raises:
+            MimiqConnectionError: If the connection is not authenticated or
+                the service refuses the request.
+        """
         self.checkAuth()
 
         query = ""
@@ -167,48 +225,60 @@ class AbstractConnection(ABC):
         return RequestInfoList(response.json()["executions"]["docs"])
 
     def isJobDone(self, request):
-        """Check if the job is done.
+        """Return True if the execution is no longer ``NEW`` or ``RUNNING``.
 
-        Returns True if the job finished successfully, with an error, or was
-        canceled, and False otherwise.
+        That is, it finished successfully, failed or was canceled. Each call
+        queries the service.
+
+        Args:
+            request (str): The execution identifier.
         """
         infos = self.requestInfo(request)
         status = infos.status
         return status != "NEW" and status != "RUNNING"
 
     def isJobFailed(self, request):
-        """Check if the job failed.
+        """Return True if the execution's status is ``ERROR``.
 
-        Returns True if the job's status is ``ERROR``.
+        Args:
+            request (str): The execution identifier.
         """
         infos = self.requestInfo(request)
         status = infos.status
         return status == "ERROR"
 
     def isJobStarted(self, request):
-        """Check if the job has started executing.
+        """Return True if the execution's status is no longer ``NEW``.
 
-        Returns True if the job's status is not ``NEW``.
+        Args:
+            request (str): The execution identifier.
         """
         infos = self.requestInfo(request)
         status = infos.status
         return status != "NEW"
 
     def isJobCanceled(self, request):
-        """Check if the job has been canceled.
+        """Return True if the execution's status is ``CANCELED``.
 
-        Returns True if the job's status is ``CANCELED``.
+        Args:
+            request (str): The execution identifier.
         """
         infos = self.requestInfo(request)
         status = infos.status
         return status == "CANCELED"
 
     def stopExecution(self, request):
-        """Stop the execution of a given request.
+        """Ask the service to stop an execution.
 
-        Sends a cancellation request to the server. If the job is ``NEW``,
-        it will be immediately canceled. If it is ``RUNNING``, a stop signal
-        will be sent to the executor.
+        An execution that has not started yet is canceled at once; a running
+        one is sent a stop signal.
+
+        Args:
+            request (str): The execution identifier.
+
+        Raises:
+            MimiqConnectionError: If the connection is not authenticated or
+                the service refuses the request.
         """
         self.checkAuth()
 
@@ -223,10 +293,14 @@ class AbstractConnection(ABC):
         return None
 
     def deleteFiles(self, request):
-        """Delete the uploaded and result files for a given request.
+        """Delete an execution's uploaded and result files from the service.
 
-        Removes both input and output files associated with the execution
-        from the server.
+        Args:
+            request (str): The execution identifier.
+
+        Raises:
+            MimiqConnectionError: If the connection is not authenticated or
+                the service refuses the request.
         """
         self.checkAuth()
 
@@ -241,7 +315,21 @@ class AbstractConnection(ABC):
         return None
 
     def downloadFile(self, request, index, filetype, destdir):
-        """Download a specific file from the server."""
+        """Download one uploaded or result file of an execution.
+
+        Args:
+            request (str): The execution identifier.
+            index (int): The position of the file, starting from 0.
+            filetype (str): ``"uploads"`` or ``"results"``.
+            destdir (str): The directory to write to, created if missing.
+
+        Returns:
+            str: The name of the written file, as given by the service.
+
+        Raises:
+            MimiqConnectionError: If the connection is not authenticated, the
+                download fails, or the service gives no file name.
+        """
         self.checkAuth()
 
         endpoint = f"files/{request}/{index}"
@@ -255,8 +343,8 @@ class AbstractConnection(ABC):
             )
 
         filename = re.findall(
-            'filename="(.+)"', response.headers.get("Content-Disposition")
-        )[0]
+            'filename="(.+)"', response.headers.get("Content-Disposition", "")
+        )
 
         # Should never happen, but just in case.
         # If it does, we can't do anything about it here. We need to patch the server
@@ -264,6 +352,7 @@ class AbstractConnection(ABC):
             raise MimiqConnectionError(
                 "Something went wrong. Server is missing the filename"
             )
+        filename = filename[0]
 
         # Create directory if it doesn't exist
         if not os.path.exists(destdir):
@@ -277,7 +366,23 @@ class AbstractConnection(ABC):
         return filename
 
     def downloadFiles(self, request, source, destdir=None):
-        """Download files for a given request."""
+        """Download all uploaded or result files of an execution.
+
+        Args:
+            request (str): The execution identifier.
+            source (str): ``"uploads"`` for the input files, anything else
+                for the result files.
+            destdir (str, optional): The directory to write to, created if
+                missing. Defaults to None (a directory named after
+                ``request`` in the current directory).
+
+        Returns:
+            list[str]: The names of the written files.
+
+        Raises:
+            MimiqConnectionError: If the connection is not authenticated or a
+                download fails.
+        """
         self.checkAuth()
 
         if destdir is None:
@@ -308,11 +413,11 @@ class AbstractConnection(ABC):
 
         Args:
             request: The execution identifier.
-            **kwargs: Additional keyword arguments passed to ``downloadFiles``
-                (e.g. ``destdir``).
+            **kwargs: Keyword arguments passed to :meth:`downloadFiles`, such
+                as ``destdir``.
 
         Returns:
-            list: List of downloaded filenames.
+            list[str]: The names of the downloaded files.
         """
         return self.downloadFiles(request, "uploads", **kwargs)
 
@@ -321,10 +426,10 @@ class AbstractConnection(ABC):
 
         Args:
             request: The execution identifier.
-            **kwargs: Additional keyword arguments passed to ``downloadFiles``
-                (e.g. ``destdir``).
+            **kwargs: Keyword arguments passed to :meth:`downloadFiles`, such
+                as ``destdir``.
 
         Returns:
-            list: List of downloaded filenames.
+            list[str]: The names of the downloaded files.
         """
         return self.downloadFiles(request, "results", **kwargs)

@@ -19,6 +19,12 @@ import os
 import sys
 
 def getLogger():
+    """Return the ``mimiqlink`` logger.
+
+    On first use it gets a handler that prints ``[LEVEL] message`` to
+    standard output. Its level is read from the ``MIMIQLINK_LOG_LEVEL``
+    environment variable (default ``INFO``) unless it was already set.
+    """
     logger = logging.getLogger("mimiqlink")
     default_log_level = os.environ.get("MIMIQLINK_LOG_LEVEL", "INFO")
 

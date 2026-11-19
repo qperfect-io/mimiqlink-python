@@ -19,7 +19,19 @@ from datetime import datetime
 from tabulate import tabulate
 
 def format_datetime(dt_str):
-    """Format a datetime string or timestamp in a more readable way."""
+    """Format a timestamp or an ISO 8601 date as ``YYYY-MM-DD HH:MM:SS``.
+
+    Numbers (or digit strings) are Unix timestamps, in milliseconds when
+    above ``10**12`` and in seconds otherwise, shown in local time. Empty
+    values and ``"None"`` give ``"Not available"``; values that cannot be
+    parsed are returned unchanged.
+
+    Examples:
+        >>> format_datetime("2024-05-01T12:30:00Z")
+        '2024-05-01 12:30:00'
+        >>> format_datetime(None)
+        'Not available'
+    """
     if not dt_str or dt_str == "None":
         return "Not available"
 
@@ -53,7 +65,25 @@ def format_datetime(dt_str):
 
 
 class RequestInfo:
-    """Class to hold and display information about a MIMIQ request."""
+    """Details of one execution, as returned by the service.
+
+    The properties read the common fields and fall back to ``"Unknown"`` (or
+    0 for file counts) when the service does not send them. :meth:`get`
+    reads any other field. In Jupyter it displays as a table.
+
+    Args:
+        data (dict): The execution data returned by the service.
+
+    Examples:
+        >>> from mimiqlink.infos import RequestInfo
+        >>> info = RequestInfo({"_id": "abc123", "name": "mps", "status": "DONE"})
+        >>> info.id, info.status
+        ('abc123', 'DONE')
+        >>> info.label
+        'Unknown'
+        >>> info.get("numberOfResultedFiles", 0)
+        0
+    """
 
     STATUS_COLORS = {
         "NEW": "#3498db",       # Blue
@@ -64,66 +94,60 @@ class RequestInfo:
     }
 
     def __init__(self, data):
-        """
-        Initialize RequestInfo with a dictionary of request data.
-
-        Args:
-            data (dict): Dictionary containing request information
-        """
         self.data = data
 
     @property
     def id(self):
-        """Get the request ID."""
+        """The execution identifier (``"_id"``)."""
         return self.data.get("_id", "Unknown")
 
     @property
     def name(self):
-        """Get the request name."""
+        """The execution name."""
         return self.data.get("name", "Unknown")
 
     @property
     def label(self):
-        """Get the request label."""
+        """The execution label."""
         return self.data.get("label", "Unknown")
 
     @property
     def status(self):
-        """Get the request status."""
+        """The execution status, such as ``"NEW"``, ``"RUNNING"``, ``"DONE"``, ``"ERROR"`` or ``"CANCELED"``."""
         return self.data.get("status", "Unknown")
 
     @property
     def user_email(self):
-        """Get the user email."""
+        """The email address of the user who submitted the execution."""
         return self.data.get("user", {}).get("email", "Unknown")
 
     @property
     def creation_date(self):
-        """Get the creation date."""
+        """The creation date, formatted by :func:`format_datetime`."""
         return format_datetime(self.data.get("creationDate"))
 
     @property
     def running_date(self):
-        """Get the running date."""
+        """The date the execution started running, formatted by :func:`format_datetime`."""
         return format_datetime(self.data.get("runningDate"))
 
     @property
     def done_date(self):
-        """Get the completion date."""
+        """The completion date, formatted by :func:`format_datetime`."""
         return format_datetime(self.data.get("doneDate"))
 
     @property
     def num_upload_files(self):
-        """Get the number of uploaded files."""
+        """The number of uploaded files."""
         return self.data.get("numberOfUploadedFiles", 0)
 
     @property
     def num_result_files(self):
-        """Get the number of result files."""
+        """The number of result files."""
         return self.data.get("numberOfResultedFiles", 0)
 
     def get(self, key, default):
-        """Get a specific attribute from the request data."""
+        """Return the field ``key`` of the execution data, or ``default`` if it is missing."""
         return self.data.get(key, default)
 
     def __repr__(self):
@@ -207,15 +231,29 @@ class RequestInfo:
 
 
 class RequestInfoList:
-    """Class to hold and display a list of MIMIQ requests."""
+    """A list of executions, as returned by ``requests()``.
+
+    It supports ``len``, indexing and iteration over :class:`RequestInfo`
+    items. Printed, it shows a status summary and a table of identifiers,
+    labels and statuses; in Jupyter it displays as a table.
+
+    Args:
+        data_list (list[dict]): The execution data returned by the service.
+
+    Examples:
+        >>> from mimiqlink.infos import RequestInfoList
+        >>> jobs = RequestInfoList([
+        ...     {"_id": "a1", "status": "DONE"},
+        ...     {"_id": "b2", "status": "ERROR"},
+        ...     {"_id": "c3", "status": "DONE"},
+        ... ])
+        >>> len(jobs), jobs[1].id
+        (3, 'b2')
+        >>> jobs.status_counts
+        {'DONE': 2, 'ERROR': 1}
+    """
 
     def __init__(self, data_list):
-        """
-        Initialize RequestInfoList with a list of request data dictionaries.
-
-        Args:
-            data_list (list): List of dictionaries containing request information
-        """
         self.requests = [RequestInfo(data) for data in data_list]
 
     def __len__(self):
@@ -232,7 +270,7 @@ class RequestInfoList:
 
     @property
     def status_counts(self):
-        """Get a dictionary with counts of each status."""
+        """A dictionary mapping each status to its number of executions."""
         counts = {}
         for req in self.requests:
             status = req.status

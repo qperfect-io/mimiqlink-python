@@ -33,7 +33,7 @@ class AuthenticationHandler(BaseHTTPRequestHandler):
         super().send_response(code, message)
 
     def do_GET(self):
-        # try to serve local files in the /pubic folder
+        # try to serve local files in the /public folder
         try:
             if self.path == "/":
                 self.path = "/index.html"

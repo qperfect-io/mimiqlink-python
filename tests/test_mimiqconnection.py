@@ -270,6 +270,50 @@ def test_exceeded_limits_are_reported(mimiqserver, caplog):
     connection.close()
 
 
+def test_the_time_limit_is_reported_in_minutes(caplog):
+    # The service sends seconds.
+    connection = MimiqConnection("https://unused")
+    connection.checkUserLimits(
+        {"enabledExecutionTime": True, "usedExecutionTime": 7300, "maxExecutionTime": 7200}
+    )
+
+    assert "limit of 120 minutes" in caplog.text
+
+
+def test_a_missing_time_limit_is_ignored(caplog):
+    connection = MimiqConnection("https://unused")
+    connection.checkUserLimits(
+        {"enabledExecutionTime": True, "usedExecutionTime": None, "maxExecutionTime": 60}
+    )
+
+    assert "computing time limit" not in caplog.text
+
+
+# -- saved tokens -----------------------------------------------------------
+
+
+def test_the_token_file_is_private(mimiq, tmp_path):
+    path = tmp_path / "qperfect.json"
+    mimiq.savetoken(str(path))
+
+    assert path.stat().st_mode & 0o777 == 0o600
+
+
+# -- malformed responses ----------------------------------------------------
+
+
+def test_a_download_without_a_filename_raises(mimiq, tmp_path, monkeypatch):
+    class Response:
+        status_code = 200
+        headers = {}
+        content = b""
+
+    monkeypatch.setattr(mimiq.session, "get", lambda *args, **kwargs: Response())
+
+    with pytest.raises(MimiqConnectionError, match="missing the filename"):
+        mimiq.downloadFile("job-1", 0, "results", str(tmp_path))
+
+
 # -- the exception ----------------------------------------------------------
 
 

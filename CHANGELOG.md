@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.10.1] — 2026-11-19
+
+### Fixed
+
+- `PlanqkConnection.close` no longer hangs while the token refresher is running.
+- `QhiveConnection.isJobDone` counts a canceled job as done, so `get_results` on it returns instead of polling forever.
+- `QhiveConnection.connect` raises `MimiqConnectionError` when given a token that is not a dictionary with both tokens, instead of returning `None`.
+- `MimiqConnection.savetoken` creates the token file readable by its owner only.
+- `MimiqConnection.checkUserLimits` reports the computing time limit in minutes and skips a limit the service leaves empty.
+- `downloadFile` raises `MimiqConnectionError` when the server sends no file name, instead of a `TypeError`.
+
+### Docs
+
+- Every public class and method has a docstring that matches the code, with
+  examples for connecting, submitting a job and reading request information.
+  The PlanQK examples no longer fail as doctests.
+
 ## [0.10.0] — 2026-10-31
 
 ### Added

@@ -31,7 +31,14 @@ PLANQK_API = "https://gateway.platform.planqk.de"
 
 
 class JWTtoken:
-    """JWT token for authentication with the PlanQK API."""
+    """Access token returned by the PlanQK API.
+
+    Attributes:
+        access_token (str): The bearer token.
+        scope (str): The scope granted.
+        token_type (str): The token type.
+        expires_in (int): The lifetime of the token, in seconds.
+    """
 
     def __init__(self, access_token, scope, token_type, expires_in):
         self.access_token = access_token
@@ -47,23 +54,33 @@ class JWTtoken:
 
 
 class PlanqkConnection(AbstractConnection):
-    """Connection to the MIMIQ services through PlanQK API.
+    """Connection to the MIMIQ services through the PlanQK gateway.
 
-    It handles the authentication and the requests to the PlanQK gateway.
+    It authenticates with a PlanQK consumer key and secret and keeps the
+    access token fresh with a background thread, which fetches a new token
+    after 80% of the current one's lifetime.
+
+    Args:
+        url (str, optional): The URL of the gateway. Defaults to None
+            (:data:`PLANQK_API`).
+        consumer_key (str, optional): The PlanQK consumer key.
+        consumer_secret (str, optional): The PlanQK consumer secret.
 
     Examples:
+        >>> from mimiqlink import PlanqkConnection
 
-    - Connect using credentials from environment variables:
+        Connect with credentials read from the ``PLANQK_CONSUMER_KEY`` and
+        ``PLANQK_CONSUMER_SECRET`` environment variables.
 
-    >>> conn = PlanqkConnection().connect()
+        >>> conn = PlanqkConnection().connect()  # doctest: +SKIP
 
-    - Connect using explicit credentials:
+        Connect with explicit credentials.
 
-    >>> conn = PlanqkConnection().connect("my_consumer_key", "my_consumer_secret")
+        >>> conn = PlanqkConnection().connect("my_consumer_key", "my_consumer_secret")  # doctest: +SKIP
 
-    - Connect with custom URL and credentials:
+        Connect to another gateway.
 
-    >>> conn = PlanqkConnection(url="https://custom-gateway.example.com").connect("key", "secret")
+        >>> conn = PlanqkConnection(url="https://custom-gateway.example.com").connect("key", "secret")  # doctest: +SKIP
     """
 
     def __init__(self, url=None, consumer_key=None, consumer_secret=None):
@@ -83,7 +100,7 @@ class PlanqkConnection(AbstractConnection):
         self.refresher_stop = False
 
     def get_api_url(self, *paths):
-        """Get the API URL for the given paths."""
+        """Return the URL of an API endpoint: ``<url>/api/planqk/<paths...>``."""
         base = urljoin(self.url + "/", "api/planqk/")
         if not paths:
             return base
@@ -100,7 +117,20 @@ class PlanqkConnection(AbstractConnection):
 
     @staticmethod
     def get_planqk_token(consumer_key, consumer_secret):
-        """Get a new JWT token from the PlanQK API."""
+        """Fetch a new access token with the client credentials grant.
+
+        The token is requested from :data:`PLANQK_API`.
+
+        Args:
+            consumer_key (str): The PlanQK consumer key.
+            consumer_secret (str): The PlanQK consumer secret.
+
+        Returns:
+            JWTtoken: The new token.
+
+        Raises:
+            MimiqConnectionError: If PlanQK refuses the credentials.
+        """
         path = urljoin(PLANQK_API, "token")
 
         creds = base64.b64encode(f"{consumer_key}:{consumer_secret}".encode()).decode()
@@ -124,14 +154,23 @@ class PlanqkConnection(AbstractConnection):
         )
 
     def connect(self, consumer_key=None, consumer_secret=None):
-        """Connect to the PlanQK API.
+        """Authenticate to the PlanQK gateway.
+
+        Credentials given here replace the ones given to the constructor.
+        A credential still missing is read from the ``PLANQK_CONSUMER_KEY``
+        or ``PLANQK_CONSUMER_SECRET`` environment variable. If the connection
+        is already open, nothing happens.
 
         Args:
-            consumer_key: The consumer key for the PlanQK API. If None, it will use the one provided in the constructor.
-            consumer_secret: The consumer secret for the PlanQK API. If None, it will use the one provided in the constructor.
+            consumer_key (str, optional): The PlanQK consumer key.
+            consumer_secret (str, optional): The PlanQK consumer secret.
 
         Returns:
-            self: The connection object.
+            PlanqkConnection: This connection.
+
+        Raises:
+            MimiqConnectionError: If a credential is missing or PlanQK refuses
+                them.
         """
         if self.isOpen():
             return self
@@ -186,12 +225,13 @@ class PlanqkConnection(AbstractConnection):
     def __startRefresher(self):
         """Start the token refresher thread."""
         # If the refresher is already running, stop it
-        with self.token_lock:
-            if self.refresher_task is not None and self.refresher_task.is_alive():
+        # Join outside the lock: the refresher takes it to read the stop flag.
+        if self.refresher_task is not None and self.refresher_task.is_alive():
+            with self.token_lock:
                 self.refresher_stop = True
-                self.refresher_task.join()
+            self.refresher_task.join()
 
-            # Ensure that the refresher is not stopped immediately
+        with self.token_lock:
             self.refresher_stop = False
 
         # Create and start the refresher
@@ -243,22 +283,24 @@ class PlanqkConnection(AbstractConnection):
                 getLogger().error(f"Failed to refresh PlanQK token: {e}")
 
     def close(self):
-        """Close the connection to the PlanQK API."""
+        """Stop the token refresher and forget the token."""
         getLogger().info(f"Closing connection to PlanQK API ({self.url})")
 
         # Ask the refresher to stop
         with self.token_lock:
             self.refresher_stop = True
-            if self.refresher_task is not None and self.refresher_task.is_alive():
-                getLogger().info("Shutting down token refresher")
-                self.refresher_task.join()
-                getLogger().info(f"Task (done) @{hex(id(self.refresher_task))}")
 
-            # Clear the token
+        # Join outside the lock: the refresher takes it to read the stop flag.
+        if self.refresher_task is not None and self.refresher_task.is_alive():
+            getLogger().info("Shutting down token refresher")
+            self.refresher_task.join()
+            getLogger().info(f"Task (done) @{hex(id(self.refresher_task))}")
+
+        with self.token_lock:
             self.token = None
 
     def isOpen(self):
-        """Check if the connection is open."""
+        """Return True if the connection has a token and its refresher is running."""
         return (
             self.refresher_task is not None
             and self.refresher_task.is_alive()
@@ -266,7 +308,11 @@ class PlanqkConnection(AbstractConnection):
         )
 
     def checkAuth(self):
-        """Check if the authentication is valid."""
+        """Check that the connection holds a token.
+
+        Raises:
+            MimiqConnectionError: If the connection is not authenticated.
+        """
         with self.token_lock:
             if self.token is None:
                 raise MimiqConnectionError("Not yet authenticated to PlanQK API.")

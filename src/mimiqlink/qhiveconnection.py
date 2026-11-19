@@ -39,13 +39,39 @@ QPERFECT_DEV = "https://mimiqfast.qperfect.io/api"
 _QPERFECT_AUTH_DEV = "https://mimiqfast.qperfect.io/auth/"
 
 class QhiveConnection(AbstractConnection):
-    """Connection to Quantum Hive web services
+    """Connection to the Quantum Hive services.
 
-    It handles the authentication and the requests.
+    Quantum Hive authenticates through Keycloak (OpenID Connect). Requests
+    carry the access token, and a request refused with status 401 refreshes
+    the token and is retried once. The object starts unauthenticated: call
+    :meth:`connect` or :meth:`loadtoken` first.
+
+    Most users reach this class through ``mimiqcircuits.MimiqConnection``,
+    which picks it for the Quantum Hive URLs.
+
+    Args:
+        url (str, optional): The URL of the API. Defaults to None
+            (:data:`QPERFECT_CLOUD_V2`).
+        auth_url (str, optional): The URL of the Keycloak server. Defaults
+            to None, which picks the server that matches
+            :data:`QPERFECT_CLOUD_V2` or :data:`QPERFECT_DEV`.
+
+    Examples:
+        >>> from mimiqlink import QhiveConnection
+
+        Log in through the browser, then save the session for later.
+
+        >>> conn = QhiveConnection().connect()  # doctest: +SKIP
+        >>> conn.savetoken("qperfect.json")  # doctest: +SKIP
+
+        Resume the session from the file.
+
+        >>> conn = QhiveConnection().loadtoken("qperfect.json")  # doctest: +SKIP
+        >>> conn.requests()  # doctest: +SKIP
     """
 
     def __init__(self, url=None, auth_url=None):
-        self.url = QPERFECT_CLOUD_V2 if url is None else url
+        super().__init__(QPERFECT_CLOUD_V2 if url is None else url)
         if auth_url is None:
             auth_url = _QPERFECT_AUTH_DEV if self.url == QPERFECT_DEV else _QPERFECT_AUTH_CLOUD_V2
         self.auth_url = auth_url
@@ -66,6 +92,30 @@ class QhiveConnection(AbstractConnection):
         )
 
     def connect(self, *args, **kwargs):
+        """Log in to the service.
+
+        The arguments choose how:
+
+        - ``connect()`` opens the Keycloak login page in the browser and
+          waits for the redirect on ``localhost`` port 1444 (or a free port).
+        - ``connect(token)`` uses a Keycloak token dictionary with
+          ``"access_token"`` and ``"refresh_token"`` entries.
+        - ``connect(email, password)`` uses credentials.
+
+        If the connection is already open, nothing happens.
+
+        Returns:
+            QhiveConnection or None: This connection, or None when the token
+            or credentials do not give a session the server accepts.
+
+        Raises:
+            MimiqConnectionError: If the browser login fails, the token is
+                not a dictionary with ``"access_token"`` and
+                ``"refresh_token"`` entries, or more than two positional
+                arguments are given.
+            keycloak.exceptions.KeycloakError: If Keycloak refuses the
+                credentials.
+        """
         if self.isOpen():
             return self
 
@@ -83,6 +133,10 @@ class QhiveConnection(AbstractConnection):
         )
 
     def close(self):
+        """Log out of Keycloak and forget the tokens.
+
+        A failed logout is ignored.
+        """
         try:
             if self.access_token is not None:
                 self.openid.logout(self.refresh_token)
@@ -93,12 +147,19 @@ class QhiveConnection(AbstractConnection):
             self.refresh_token = None
 
     def isOpen(self):
-        """Check if the connection is open."""
+        """Return True if the access token is accepted by the server.
+
+        Queries the server on every call.
+        """
         if self.access_token == None or self.refresh_token == None:
             return False
         return self.checkAuth()
 
     def checkAuth(self):
+        """Return True if the access token is accepted by the server, False otherwise.
+
+        Unlike :meth:`MimiqConnection.checkAuth`, it does not raise.
+        """
         if self.access_token is None or self.refresh_token == None:
             return False
         try:
@@ -109,6 +170,11 @@ class QhiveConnection(AbstractConnection):
         return bool(user)
 
     def get_api_url(self, *paths):
+        """Not available for Quantum Hive.
+
+        Raises:
+            MimiqConnectionError: Always.
+        """
         raise MimiqConnectionError("Not applicable to QHive connection")
 
     def _connectStandard(self):
@@ -143,9 +209,14 @@ class QhiveConnection(AbstractConnection):
         return self
     
     def _connectToken(self, token):
-        if isinstance(token, dict) and 'access_token' in token:
-            self.access_token = token['access_token']
-            self.refresh_token = token['refresh_token']
+        if not (
+            isinstance(token, dict) and 'access_token' in token and 'refresh_token' in token
+        ):
+            raise MimiqConnectionError(
+                "Expected a token dictionary with 'access_token' and 'refresh_token'."
+            )
+        self.access_token = token['access_token']
+        self.refresh_token = token['refresh_token']
         return self if self.checkAuth() else None
 
     def _connectDirect(self, email, password):
@@ -193,7 +264,27 @@ class QhiveConnection(AbstractConnection):
 
 
     def request(self, emulatortype, algorithm, label, timeout, uploads):
-        """Request an execution to the remote server."""
+        """Upload files and create an execution on the service.
+
+        ``request.json`` and ``circuits.json`` are sent with the job; every
+        other file is uploaded as a circuit file. The job is then committed
+        for execution.
+
+        Args:
+            emulatortype (str): The type of executor, for example ``"CIRC"``.
+            algorithm (str): The simulation algorithm.
+            label (str): A label to identify the execution.
+            timeout (int): The time limit of the execution, in minutes.
+            uploads (list): The files to upload, as paths or open binary file
+                objects.
+
+        Returns:
+            str: The identifier of the new execution.
+
+        Raises:
+            MimiqConnectionError: If the connection is not open or the
+                service refuses a step.
+        """
         self._assertConnection()
 
         form_data = {
@@ -242,7 +333,18 @@ class QhiveConnection(AbstractConnection):
         return requestId
 
     def requestInfo(self, request):
-        """Retrieve the execution details for a given request."""
+        """Fetch the details of an execution.
+
+        Args:
+            request (str): The execution identifier.
+
+        Returns:
+            RequestInfo: The execution's details.
+
+        Raises:
+            MimiqConnectionError: If the connection is not open or the
+                service refuses the request.
+        """
         self._assertConnection()
 
         response = self._authenticatedRequest(f"/jobs/{request}")
@@ -255,7 +357,18 @@ class QhiveConnection(AbstractConnection):
         return RequestInfo(response.json())
 
     def requests(self, **kwargs):
-        """Retrieve the list of requests from the server."""
+        """Fetch the list of the user's executions.
+
+        Args:
+            **kwargs: Accepted for compatibility and not used.
+
+        Returns:
+            RequestInfoList: The executions.
+
+        Raises:
+            MimiqConnectionError: If the connection is not open or the
+                service refuses the request.
+        """
         self._assertConnection()
 
         response = self._authenticatedRequest(f"/jobs")
@@ -267,31 +380,31 @@ class QhiveConnection(AbstractConnection):
         return RequestInfoList(response.json())
 
     def isJobDone(self, request):
-        """Check if the job is done."""
+        """Return True if the execution's status is ``ERROR``, ``SUCCESSFUL`` or ``CANCELED``."""
         infos = self.requestInfo(request)
         status = infos.status
-        return status in ["ERROR", "SUCCESSFUL"]
+        return status in ["ERROR", "SUCCESSFUL", "CANCELED"]
 
     def isJobFailed(self, request):
-        """Check if the job failed."""
+        """Return True if the execution's status is ``ERROR``."""
         infos = self.requestInfo(request)
         status = infos.status
         return status == "ERROR"
 
     def isJobStarted(self, request):
-        """Check if the job is started."""
+        """Return True if the execution's status is ``COMMITED``, ``PROCESSED`` or ``AUTHORIZED``."""
         infos = self.requestInfo(request)
         status = infos.status
         return status in ["COMMITED", "PROCESSED", "AUTHORIZED"]
 
     def isJobCanceled(self, request):
-        """Check if the job is canceled."""
+        """Return True if the execution's status is ``CANCELED``."""
         infos = self.requestInfo(request)
         status = infos.status
         return status == "CANCELED"
 
     def stopexecution(self, request):
-        """Stop the execution of a given request."""
+        """Cancel an execution. Same as :meth:`stopExecution`."""
         self._assertConnection()
 
         response = self._authenticatedRequest(f"/jobs/{request}/cancel", "PATCH")
@@ -303,7 +416,15 @@ class QhiveConnection(AbstractConnection):
         return None
 
     def stopExecution(self, request):
-        """Stop the execution of a given request."""
+        """Cancel an execution.
+
+        Args:
+            request (str): The execution identifier.
+
+        Raises:
+            MimiqConnectionError: If the connection is not open or the
+                service refuses the request.
+        """
         self._assertConnection()
 
         response = self._authenticatedRequest(f"/jobs/{request}/cancel", "PATCH")
@@ -315,7 +436,16 @@ class QhiveConnection(AbstractConnection):
         return None
 
     def deleteFiles(self, request):
-        """Delete job files on the backend."""
+        """Delete an execution's files from the service.
+
+        Args:
+            request (str): The execution identifier.
+
+        Raises:
+            MimiqConnectionError: If the connection is not open, the
+                execution has not completed, or the service refuses the
+                request.
+        """
         self._assertConnection()
 
         response = self._authenticatedRequest(f"/files/{request}", "DELETE")
@@ -327,13 +457,39 @@ class QhiveConnection(AbstractConnection):
 
 
     def savetoken(self, filepath="qperfect.json"):
+        """Save the refresh token and the service URLs to a JSON file.
+
+        The file is created readable by its owner only. :meth:`loadtoken`
+        reads it back.
+
+        Args:
+            filepath (str): The file to write. Defaults to
+                ``"qperfect.json"``.
+
+        Raises:
+            MimiqConnectionError: If the connection is not open.
+
+        Warning:
+            The file grants access to the account. Keep it private.
+        """
         self._assertConnection()
         fd = os.open(filepath, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
         with os.fdopen(fd, "w") as f:
             json.dump(dict(token=self.refresh_token, url=self.url, auth_url=self.auth_url), f)
 
     def loadtoken(self, filepath="qperfect.json"):
-        """Load and connect using a token from a file."""
+        """Log in with a refresh token saved by :meth:`savetoken`.
+
+        Args:
+            filepath (str): The file to read. Defaults to ``"qperfect.json"``.
+
+        Returns:
+            QhiveConnection: This connection.
+
+        Raises:
+            MimiqConnectionError: If the file cannot be read, was saved for
+                different URLs, or the token can no longer be refreshed.
+        """
         
         # Attempt to read the token file
         try:
@@ -365,7 +521,22 @@ class QhiveConnection(AbstractConnection):
         return self
 
     def downloadFile(self, request, index, filetype, destdir):
-        """Download a specific file from the server."""
+        """Download one file of an execution.
+
+        Args:
+            request (str): The execution identifier.
+            index (str): The name of the file on the service, also used as
+                the local file name.
+            filetype (str): The kind of file, for example ``"results"``.
+            destdir (str): The directory to write to, created if missing.
+
+        Returns:
+            str: ``index``.
+
+        Raises:
+            MimiqConnectionError: If the connection is not open or the
+                download fails.
+        """
         self._assertConnection()
 
         response = self._authenticatedRequest(f"/files/{request}/{filetype}/{index}", "GET", allow_redirects=True)
@@ -386,7 +557,23 @@ class QhiveConnection(AbstractConnection):
         return index
 
     def downloadFiles(self, request, source, destdir=None):
-        """Download files for a given request."""
+        """Download all files of one kind for an execution.
+
+        Args:
+            request (str): The execution identifier.
+            source (str): ``"uploads"`` or ``"results"``.
+            destdir (str, optional): The directory to write to, created if
+                missing. Defaults to None (a directory named after
+                ``request`` in the current directory).
+
+        Returns:
+            list[str]: The names of the written files.
+
+        Raises:
+            MimiqConnectionError: If the connection is not open or the list
+                of files cannot be fetched.
+            requests.HTTPError: If a file download fails.
+        """
         self._assertConnection()
 
         response = self._authenticatedRequest(f"/files/{request}/{source}")

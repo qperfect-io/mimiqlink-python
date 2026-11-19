@@ -18,6 +18,7 @@
 from functools import partial
 from http.server import HTTPServer
 import json
+import os
 import threading
 import webbrowser
 from urllib.parse import urljoin
@@ -34,9 +35,42 @@ QPERFECT_CLOUD = "https://mimiq.qperfect.io"
 
 
 class MimiqConnection(AbstractConnection):
-    """Connection to the MIMIQ remote services.
+    """Connection to the MIMIQ cloud services.
 
-    It handles the authentication and the requests.
+    It authenticates to the service, keeps the access token fresh with a
+    background thread that refreshes it every 15 minutes, and sends the
+    requests defined in :class:`AbstractConnection`. The object starts
+    unauthenticated: call :meth:`connect` or :meth:`loadtoken` first.
+
+    Most users reach this class through ``mimiqcircuits.MimiqConnection``,
+    which adds circuit submission and result retrieval on top of it.
+
+    Args:
+        url (str, optional): The URL of the service. Defaults to None
+            (:data:`QPERFECT_CLOUD`).
+
+    Examples:
+        >>> from mimiqlink import MimiqConnection
+
+        Log in through a page opened in the browser.
+
+        >>> conn = MimiqConnection()
+        >>> conn.connect()  # doctest: +SKIP
+
+        Save the refresh token, and reuse it later without logging in again.
+
+        >>> conn.savetoken("qperfect.json")  # doctest: +SKIP
+        >>> conn = MimiqConnection().loadtoken("qperfect.json")  # doctest: +SKIP
+
+        List the past executions and inspect one of them.
+
+        >>> jobs = conn.requests()  # doctest: +SKIP
+        >>> conn.requestInfo(jobs[0].id).status  # doctest: +SKIP
+        'DONE'
+
+        Log out.
+
+        >>> conn.close()  # doctest: +SKIP
     """
 
     def __init__(self, url=None):
@@ -59,7 +93,7 @@ class MimiqConnection(AbstractConnection):
         self.user_limits = None
 
     def get_api_url(self, *paths):
-        """Get the API URL for the given paths."""
+        """Return the URL of an API endpoint: ``<url>/api/<paths...>``."""
         base = urljoin(self.url + "/", "api")
         if not paths:
             return base
@@ -105,7 +139,20 @@ class MimiqConnection(AbstractConnection):
         return response
 
     def connectUser(self, email, password):
-        """Authenticate to the remote server with the given credentials (email and password)."""
+        """Log in with an email address and a password.
+
+        Closes the connection first if it is open.
+
+        Args:
+            email (str): The account's email address.
+            password (str): The account's password.
+
+        Returns:
+            MimiqConnection: This connection.
+
+        Raises:
+            MimiqConnectionError: If the service refuses the credentials.
+        """
 
         if self.isOpen():
             self.close()
@@ -115,7 +162,20 @@ class MimiqConnection(AbstractConnection):
         return self
 
     def connectToken(self, token):
-        """Authenticate to the remote server with the given refresh token"""
+        """Log in with a refresh token.
+
+        Closes the connection first if it is open. The token is the one
+        :meth:`savetoken` writes to the ``"token"`` field of its file.
+
+        Args:
+            token (str): The refresh token.
+
+        Returns:
+            MimiqConnection: This connection.
+
+        Raises:
+            MimiqConnectionError: If the service refuses the token.
+        """
 
         if self.isOpen():
             self.close()
@@ -137,7 +197,18 @@ class MimiqConnection(AbstractConnection):
         return self
 
     def connectWeb(self):
-        """Authenticate to the remote services by taking credentials from a locally shown login page"""
+        """Log in through a login page served locally and opened in the browser.
+
+        Closes the connection first if it is open. The page is served on
+        ``localhost`` port 1444, or on a free port if that one is taken, and
+        the call blocks until the login succeeds.
+
+        Returns:
+            MimiqConnection: This connection.
+
+        Raises:
+            MimiqConnectionError: If no access token is obtained.
+        """
 
         if self.isOpen():
             self.close()
@@ -174,34 +245,39 @@ class MimiqConnection(AbstractConnection):
         return self
 
     def connect(self, *args, **kwargs):
-        """Connect to the remote server.
+        """Log in to the service.
 
-        Supports three calling conventions:
+        The arguments choose how:
 
-        - ``connect()`` — opens a browser-based login page (recommended).
-        - ``connect(token)`` — authenticates with a refresh token.
-        - ``connect(email, password)`` — authenticates with credentials.
+        - ``connect()`` logs in through a page opened in the browser
+          (:meth:`connectWeb`).
+        - ``connect(token)`` uses a refresh token (:meth:`connectToken`).
+        - ``connect(email, password)`` uses credentials
+          (:meth:`connectUser`).
 
-        If the connection is already open, this is a no-op.
+        If the connection is already open, nothing happens.
 
-        Internally delegates to :meth:`connectWeb`, :meth:`connectToken`,
-        or :meth:`connectUser` respectively.
+        Returns:
+            MimiqConnection: This connection.
+
+        Raises:
+            MimiqConnectionError: If the login fails, or more than two
+                positional arguments are given.
 
         Examples:
+            >>> from mimiqlink import MimiqConnection
 
-        .. code-block:: python
+            Browser login.
 
-            # Browser login (recommended)
-            conn = MimiqConnection()
-            conn.connect()
+            >>> conn = MimiqConnection().connect()  # doctest: +SKIP
 
-            # Token-based login
-            conn = MimiqConnection()
-            conn.connect("mytoken")
+            Login with a refresh token.
 
-            # Credential-based login
-            conn = MimiqConnection()
-            conn.connect("john.doe@example.com", "password")
+            >>> conn = MimiqConnection().connect("my-refresh-token")  # doctest: +SKIP
+
+            Login with credentials.
+
+            >>> conn = MimiqConnection().connect("john.doe@example.com", "password")  # doctest: +SKIP
         """
         if self.isOpen():
             return self
@@ -260,7 +336,17 @@ class MimiqConnection(AbstractConnection):
             self.refresh()
 
     def refresh(self):
-        """Refresh the access token using the refresh token."""
+        """Exchange the refresh token for a new access token and refresh token.
+
+        The background thread calls this every 15 minutes; call it by hand
+        only to force a refresh. It also updates the user's limits.
+
+        Returns:
+            bool: True.
+
+        Raises:
+            MimiqConnectionError: If the service refuses the refresh token.
+        """
         endpoint = "/access-token"
 
         # prepare the request
@@ -298,19 +384,48 @@ class MimiqConnection(AbstractConnection):
         self.session.headers.update({"Authorization": f"Bearer {token}"})
 
     def checkAuth(self):
+        """Check that the connection holds an access token.
+
+        Raises:
+            MimiqConnectionError: If the connection is not authenticated.
+        """
         with self.refresher_lock:
             if self.access_token is None:
                 raise MimiqConnectionError("Not yet authenticated.")
 
     def savetoken(self, filepath="qperfect.json"):
-        """Save the current token to a file."""
+        """Save the refresh token and the service URL to a JSON file.
+
+        The file is created readable by its owner only. :meth:`loadtoken`
+        reads the file back. If the connection has no token yet, it logs in
+        first with :meth:`connect`, which opens the browser login page.
+
+        Args:
+            filepath (str): The file to write. Defaults to
+                ``"qperfect.json"``.
+
+        Warning:
+            The file grants access to the account. Keep it private.
+        """
         if self.refresh_token is None:
             self.connect()
-        with open(filepath, "w") as f:
+        fd = os.open(filepath, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, "w") as f:
             json.dump({"token": self.refresh_token, "url": self.url}, f)
 
     def loadtoken(self, filepath="qperfect.json"):
-        """Load and connect using a token from a file."""
+        """Log in with a refresh token saved by :meth:`savetoken`.
+
+        Args:
+            filepath (str): The file to read. Defaults to ``"qperfect.json"``.
+
+        Returns:
+            MimiqConnection: This connection.
+
+        Raises:
+            MimiqConnectionError: If the file cannot be read, was saved for a
+                different URL, or the service refuses the token.
+        """
         # Attempt to read the token file
         try:
             with open(filepath, "r") as f:
@@ -341,7 +456,10 @@ class MimiqConnection(AbstractConnection):
             ) from e
 
     def close(self):
-        """Close the connection."""
+        """Stop the token refresher and forget the tokens.
+
+        The tokens are not revoked on the service.
+        """
         getLogger().info(f"Closing connection to {self.url}")
         # ask the refresher to stop
         with self.refresher_lock:
@@ -360,7 +478,7 @@ class MimiqConnection(AbstractConnection):
         self.refresh_token = None
 
     def isOpen(self):
-        """Check if the connection is open."""
+        """Return True if the connection has an access token and its refresher is running."""
         return (
             self.refresher_task is not None
             and self.refresher_task.is_alive()
@@ -368,7 +486,16 @@ class MimiqConnection(AbstractConnection):
         )
 
     def checkUserLimits(self, limits=None):
-        """Check if the user limits are respected."""
+        """Log a warning for each usage limit the account has exceeded.
+
+        Checks the computing time and the number of executions. The service
+        does not change state.
+
+        Args:
+            limits (dict, optional): The limits to check, as returned by the
+                service. Defaults to None (the limits fetched at the last
+                login or token refresh).
+        """
         if limits is None:
             limits = self.user_limits
 
@@ -376,11 +503,12 @@ class MimiqConnection(AbstractConnection):
             return
 
         if limits.get("enabledExecutionTime"):
+            # The service reports seconds.
             used_time = limits.get("usedExecutionTime")
             max_time = limits.get("maxExecutionTime")
-            if used_time > max_time:
+            if used_time is not None and max_time is not None and used_time > max_time:
                 getLogger().warning(
-                    f"You have exceeded your computing time limit of {max_time} minutes"
+                    f"You have exceeded your computing time limit of {round(max_time / 60)} minutes"
                 )
 
         if limits.get("enabledMaxExecutions"):

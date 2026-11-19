@@ -56,6 +56,16 @@ def test_wrong_credentials_leave_the_connection_closed(qhiveserver):
     assert not connection.isOpen()
 
 
+def test_a_bare_string_token_is_refused():
+    with pytest.raises(MimiqConnectionError, match="token dictionary"):
+        QhiveConnection().connect("not a token dictionary")
+
+
+def test_a_token_without_a_refresh_token_is_refused():
+    with pytest.raises(MimiqConnectionError, match="token dictionary"):
+        QhiveConnection().connect({"access_token": "a"})
+
+
 def test_a_token_pair_authenticates(qhiveserver):
     tokens = qhiveserver.issuetokens()
 
@@ -176,7 +186,7 @@ def test_the_list_of_requests_comes_back(qhive, qhiveserver):
         ("PROCESSED", False, True, False, False),
         ("SUCCESSFUL", True, False, False, False),
         ("ERROR", True, False, True, False),
-        ("CANCELED", False, False, False, True),
+        ("CANCELED", True, False, False, True),
     ],
 )
 def test_the_status_predicates_agree_with_the_status(
